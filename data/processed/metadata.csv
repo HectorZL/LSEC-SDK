@@ -1,19 +1,21 @@
 sequence_id,label,num_frames,fps,width,height,npy_path,pose_mean_conf,face_mean_conf,lh_mean_conf,rh_mean_conf
-dwpose_buenos-dias,Buenos días,85,25.0,640,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_buenos-dias.npy,0.5879271030426025,0.9384064078330994,0.7198874354362488,0.6627896428108215
-dwpose_buenas-tardes,Buenas tardes,98,25.0,640,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_buenas-tardes.npy,0.579641580581665,0.9408912658691406,0.6281439065933228,0.6951574087142944
-dwpose_buenas-noches,Buenas noches,102,25.0,640,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_buenas-noches.npy,0.5919392704963684,0.9413058757781982,0.690495491027832,0.6609836220741272
-dwpose_como-esta,¿Cómo está?,152,25.0,482,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_como-esta.npy,0.5885426998138428,0.9639949202537537,0.507511556148529,0.7765154242515564
-dwpose_como-te-sientes,CÓMO TE SIENTES,112,29.97002997002997,1280,720,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_como-te-sientes.npy,0.5887752175331116,0.9567761421203613,0.7519605755805969,0.8272989392280579
-dwpose_esta-bien,¿Está bien?,82,25.0,640,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_esta-bien.npy,0.5836396217346191,0.9661168456077576,0.7719948887825012,0.8320090174674988
-dwpose_de-nada,De nada,110,25.0,484,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_de-nada.npy,0.5780160427093506,0.9507259726524353,0.6439788937568665,0.7201250195503235
-dwpose_un-momento-por-favor,Un momento por favor,102,25.0,640,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_un-momento-por-favor.npy,0.5902926921844482,0.9594336152076721,0.7896552681922913,0.857729971408844
-dwpose_adios,Adiós,150,25.0,490,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_adios.npy,0.5811821818351746,0.9495729207992554,0.5136290788650513,0.7089036107063293
-dwpose_hace-tiempo-que-no-te-veo,Hace tiempo que no te veo,120,25.0,484,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_hace-tiempo-que-no-te-veo.npy,0.5755813121795654,0.9227069020271301,0.33340713381767273,0.6594935655593872
-dwpose_hambre,Hambre,105,25.0,484,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_hambre.npy,0.5868386030197144,0.9519155025482178,0.7109407186508179,0.7112118601799011
-dwpose_agua,Agua,115,25.0,490,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_agua.npy,0.5967987775802612,0.9518371224403381,0.7420135140419006,0.7087308168411255
-dwpose_ya-no-mas,Ya no más,102,25.0,484,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_ya-no-mas.npy,0.5777266025543213,0.9550210237503052,0.40705984830856323,0.7191563844680786
-dwpose_mal,Mal,88,25.0,484,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_mal.npy,0.5956241488456726,0.9647979140281677,0.7185211777687073,0.8010069131851196
-dwpose_donde-estudio,DÓNDE ESTUDIÓ,124,29.973410684070583,1280,720,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_donde-estudio.npy,0.5814282298088074,0.9548014402389526,0.7334268689155579,0.7635871171951294
-dwpose_donde,¿Dónde?,83,15.0,482,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_donde.npy,0.5971745848655701,0.9675794839859009,0.7573508024215698,0.7769904732704163
-dwpose_en-que-le-puedo-ayudar,¿En qué le puedo ayudar?,104,25.0,640,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_en-que-le-puedo-ayudar.npy,0.5832099914550781,0.9609674215316772,0.7049595713615417,0.7521483898162842
-dwpose_reposo_baseline,REPOSO,28,25.0,1280,720,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_reposo_baseline.npy,0.5962501764297485,0.9508232474327087,0.0681951493024826,0.07040157914161682
+dwpose_hola,Hola,82,15.0,482,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_hola.npy,0.553030788898468,0.9562132358551025,0.49870067834854126,0.22846949100494385
+dwpose_chao,Chao,58,15.0,484,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_chao.npy,0.586000382900238,0.9628202319145203,0.316120445728302,0.7141539454460144
+dwpose_buenos-dias,Buenos días,85,25.0,640,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_buenos-dias.npy,0.5879216194152832,0.938459575176239,0.7198885679244995,0.6627574563026428
+dwpose_buenas-tardes,Buenas tardes,98,25.0,640,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_buenas-tardes.npy,0.5796266198158264,0.9409418106079102,0.6282781958580017,0.6951413154602051
+dwpose_buenas-noches,Buenas noches,102,25.0,640,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_buenas-noches.npy,0.5919294953346252,0.9413433074951172,0.6905791163444519,0.6609736084938049
+dwpose_como-esta,¿Cómo está?,152,25.0,482,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_como-esta.npy,0.5884971618652344,0.9639972448348999,0.5075079202651978,0.7764981985092163
+dwpose_como-te-sientes,CÓMO TE SIENTES,112,29.97002997002997,1280,720,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_como-te-sientes.npy,0.5887764692306519,0.9568126201629639,0.7519538998603821,0.827224850654602
+dwpose_esta-bien,¿Está bien?,82,25.0,640,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_esta-bien.npy,0.583633303642273,0.9661499261856079,0.7719296813011169,0.8319504261016846
+dwpose_de-nada,De nada,110,25.0,484,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_de-nada.npy,0.578009307384491,0.9507617354393005,0.6441009044647217,0.7202365398406982
+dwpose_un-momento-por-favor,Un momento por favor,102,25.0,640,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_un-momento-por-favor.npy,0.5902745723724365,0.9594804048538208,0.7897123694419861,0.8577381372451782
+dwpose_adios,Adiós,150,25.0,490,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_adios.npy,0.5811592936515808,0.9495915174484253,0.513821005821228,0.7088455557823181
+dwpose_hace-tiempo-que-no-te-veo,Hace tiempo que no te veo,120,25.0,484,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_hace-tiempo-que-no-te-veo.npy,0.5755672454833984,0.9227322340011597,0.33351969718933105,0.6593785881996155
+dwpose_hambre,Hambre,105,25.0,484,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_hambre.npy,0.5868222117424011,0.9519627094268799,0.7109534740447998,0.7112131714820862
+dwpose_agua,Agua,115,25.0,490,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_agua.npy,0.5967926979064941,0.9518634676933289,0.7419683337211609,0.708566427230835
+dwpose_ya-no-mas,Ya no más,102,25.0,484,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_ya-no-mas.npy,0.5776687860488892,0.9550292491912842,0.40714603662490845,0.719147801399231
+dwpose_mal,Mal,88,25.0,484,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_mal.npy,0.5955983400344849,0.9648295640945435,0.7186430096626282,0.8009685277938843
+dwpose_donde-estudio,DÓNDE ESTUDIÓ,124,29.973410684070583,1280,720,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_donde-estudio.npy,0.5814260244369507,0.9548114538192749,0.7333903312683105,0.7636016607284546
+dwpose_donde,¿Dónde?,83,15.0,482,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_donde.npy,0.5971552729606628,0.9675823450088501,0.7573972940444946,0.7769504189491272
+dwpose_en-que-le-puedo-ayudar,¿En qué le puedo ayudar?,104,25.0,640,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_en-que-le-puedo-ayudar.npy,0.58320152759552,0.9610012769699097,0.7049558758735657,0.7521846890449524
+dwpose_reposo_baseline,REPOSO,28,25.0,1280,720,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_reposo_baseline.npy,0.552851140499115,0.95516437292099,0.0321747250854969,0.027715086936950684

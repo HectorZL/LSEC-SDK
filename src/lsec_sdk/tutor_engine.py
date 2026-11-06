@@ -69,7 +69,7 @@ def matches_target(pred_label: Optional[str], target_label: str) -> bool:
 def classify_section(label: str) -> str:
     """Categorizes sign labels into intuitive pedagogical sections."""
     lbl = clean_ascii(label).upper()
-    if any(w in lbl for w in ["BUENOS DIAS", "BUENAS TARDES", "BUENAS NOCHES", "ADIOS", "DE NADA", "UN MOMENTO", "HACE TIEMPO", "ABRAZAR"]):
+    if any(w in lbl for w in ["HOLA", "CHAO", "ADIOS", "BUENOS DIAS", "BUENAS TARDES", "BUENAS NOCHES", "DE NADA", "UN MOMENTO", "HACE TIEMPO", "ABRAZAR"]):
         return "SALUDOS"
     if any(w in lbl for w in ["DONDE ESTUDIO", "CUENTA", "CREDITO", "REQUISITOS", "AYUDAR", "ABOGADO", "ABONAR", "FOLLETO", "A DIARIO"]):
         return "TRABAJO"

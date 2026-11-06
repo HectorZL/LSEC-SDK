@@ -23,6 +23,8 @@ from lsec_sdk.models.trainer import SignModelTrainer
 from lsec_sdk.models.inference import LiveInferenceEngine
 
 CONVERSATIONAL_SIGNS = [
+    {"slug": "hola", "label": "Hola", "cat": "saludos"},
+    {"slug": "chao", "label": "Chao", "cat": "saludos"},
     {"slug": "buenos-dias", "label": "Buenos días", "cat": "frases-comunes"},
     {"slug": "buenas-tardes", "label": "Buenas tardes", "cat": "frases-comunes"},
     {"slug": "buenas-noches", "label": "Buenas noches", "cat": "frases-comunes"},
@@ -69,8 +71,9 @@ def extract_all_with_dwpose():
             if root_matches:
                 v_path = root_matches[0]
 
+        total_s = len(CONVERSATIONAL_SIGNS)
         if not v_path.exists():
-            print(f"[{idx:02d}/17] ERROR: Video no encontrado para '{label}': {v_path}")
+            print(f"[{idx:02d}/{total_s:02d}] ERROR: Video no encontrado para '{label}': {v_path}")
             continue
 
         cap = cv2.VideoCapture(str(v_path))
@@ -96,7 +99,7 @@ def extract_all_with_dwpose():
 
         lh_c = float(np.mean(arr[:, 95:116, 2]))
         rh_c = float(np.mean(arr[:, 116:137, 2]))
-        print(f"[{idx:02d}/17] '{label:<25}': {len(arr):3d} frames ({dt:4.1f}s, {fps_proc:4.1f} FPS) | LH: {lh_c:.2f}, RH: {rh_c:.2f}")
+        print(f"[{idx:02d}/{total_s:02d}] '{label:<25}': {len(arr):3d} frames ({dt:4.1f}s, {fps_proc:4.1f} FPS) | LH: {lh_c:.2f}, RH: {rh_c:.2f}")
 
         records.append({
             "sequence_id": seq_id,
