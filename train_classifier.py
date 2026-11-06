@@ -32,6 +32,7 @@ def main():
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--target-frames", type=int, default=32)
+    parser.add_argument("--replicate-factor", type=int, default=35)
     parser.add_argument("--out-model", type=str, default="models/checkpoints/lsec_classifier.pt")
     args = parser.parse_args()
 
@@ -65,7 +66,7 @@ def main():
         samples,
         target_frames=args.target_frames,
         augment=True,
-        replicate_factor=20,
+        replicate_factor=args.replicate_factor,
     )
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
 
