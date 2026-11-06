@@ -147,8 +147,13 @@ def main():
             if tutor.enabled and tutor.current_lesson:
                 target_conf = engine.get_target_confidence(tutor.current_lesson.clean_label)
 
-            # Check if user hands are visible in camera
-            hands_detected = bool(results.left_hand_landmarks or results.right_hand_landmarks)
+            # Check if user hands are visible in camera (including inertial profile tracking)
+            hands_detected = bool(
+                results.left_hand_landmarks
+                or results.right_hand_landmarks
+                or capture.left_hand_active
+                or capture.right_hand_active
+            )
 
             # Draw user's own live skeleton tracking
             display_frame = capture.draw_skeleton(frame, results)

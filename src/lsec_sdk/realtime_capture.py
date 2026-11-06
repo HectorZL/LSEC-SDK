@@ -22,25 +22,35 @@ logger = logging.getLogger(__name__)
 
 
 class RealTimeCapture:
-    """Captures video stream from webcam and tracks body, face, and hands in real time."""
+    """Captures video stream from webcam and tracks body, face, and hands in real time with inertial stabilization."""
 
     def __init__(
         self,
         camera_index: int = 0,
-        min_detection_confidence: float = 0.5,
-        min_tracking_confidence: float = 0.5,
+        min_detection_confidence: float = 0.30,
+        min_tracking_confidence: float = 0.30,
     ):
         self.camera_index = camera_index
         self.mp_holistic = mp.solutions.holistic
         self.mp_drawing = mp.solutions.drawing_utils
         self.mp_drawing_styles = mp.solutions.drawing_styles
 
+        # Lowered thresholds (0.30) to preserve hands in profile / side angles
         self.holistic = self.mp_holistic.Holistic(
             min_detection_confidence=min_detection_confidence,
             min_tracking_confidence=min_tracking_confidence,
             model_complexity=1,
             smooth_landmarks=True,
         )
+
+        # Inertial tracking buffers for hands when rotated sideways
+        self.max_inertial_frames: int = 7  # Keep hand anchored for up to ~220ms during brief side occlusion
+        self.last_lh_relative: Optional[np.ndarray] = None  # (21, 2) offsets relative to wrist
+        self.last_rh_relative: Optional[np.ndarray] = None  # (21, 2) offsets relative to wrist
+        self.lh_missed_count: int = 0
+        self.rh_missed_count: int = 0
+        self.last_inertial_lh: Optional[np.ndarray] = None
+        self.last_inertial_rh: Optional[np.ndarray] = None
 
         # Drawing styles
         self.pose_conn_spec = self.mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2)
@@ -49,7 +59,19 @@ class RealTimeCapture:
         self.hand_l_pt = self.mp_drawing.DrawingSpec(color=(200, 0, 200), thickness=2, circle_radius=2)
         self.hand_r_conn = self.mp_drawing.DrawingSpec(color=(0, 255, 255), thickness=2)
         self.hand_r_pt = self.mp_drawing.DrawingSpec(color=(0, 200, 200), thickness=2, circle_radius=2)
+        self.inertial_conn = self.mp_drawing.DrawingSpec(color=(0, 220, 255), thickness=2)
+        self.inertial_pt = self.mp_drawing.DrawingSpec(color=(0, 255, 255), thickness=2, circle_radius=2)
         self.face_spec = self.mp_drawing.DrawingSpec(color=(255, 200, 0), thickness=1, circle_radius=1)
+
+    @property
+    def left_hand_active(self) -> bool:
+        """True if left hand is directly tracked or actively held via inertial tracking."""
+        return self.lh_missed_count == 0 or (self.last_lh_relative is not None and self.lh_missed_count <= self.max_inertial_frames)
+
+    @property
+    def right_hand_active(self) -> bool:
+        """True if right hand is directly tracked or actively held via inertial tracking."""
+        return self.rh_missed_count == 0 or (self.last_rh_relative is not None and self.rh_missed_count <= self.max_inertial_frames)
 
     def extract_landmarks_array(self, results) -> np.ndarray:
         """
@@ -110,17 +132,73 @@ class RealTimeCapture:
                 pt = flm[src_i]
                 arr[FACE_SLICE.start + i] = [pt.x, pt.y, 1.0]
 
-        # 3. Left Hand (21 landmarks)
+        # Wrist positions from body pose for inertial tracking
+        lwrist_valid = (arr[7, 2] > 0.20)
+        rwrist_valid = (arr[4, 2] > 0.20)
+        lwrist_pos = np.array([arr[7, 0], arr[7, 1]], dtype=np.float32) if lwrist_valid else None
+        rwrist_pos = np.array([arr[4, 0], arr[4, 1]], dtype=np.float32) if rwrist_valid else None
+
+        # 3. Left Hand (21 landmarks) with profile-angle inertial dead reckoning
+        self.last_inertial_lh = None
         if results.left_hand_landmarks:
+            self.lh_missed_count = 0
+            hand_pts = np.zeros((21, 3), dtype=np.float32)
             for i, pt in enumerate(results.left_hand_landmarks.landmark):
                 if i < 21:
+                    hand_pts[i] = [pt.x, pt.y, 1.0]
                     arr[HAND_LEFT_SLICE.start + i] = [pt.x, pt.y, 1.0]
 
-        # 4. Right Hand (21 landmarks)
+            anchor = hand_pts[0, :2] if hand_pts[0, 2] > 0 else (lwrist_pos if lwrist_pos is not None else hand_pts[0, :2])
+            self.last_lh_relative = hand_pts[:, :2] - anchor
+        else:
+            self.lh_missed_count += 1
+            if (
+                self.last_lh_relative is not None
+                and self.lh_missed_count <= self.max_inertial_frames
+                and lwrist_pos is not None
+                and lwrist_pos[1] < 0.88
+            ):
+                decay = max(0.25, 1.0 - (self.lh_missed_count * 0.12))
+                inertial_pts = np.zeros((21, 2), dtype=np.float32)
+                for i in range(21):
+                    nx = float(lwrist_pos[0] + self.last_lh_relative[i, 0])
+                    ny = float(lwrist_pos[1] + self.last_lh_relative[i, 1])
+                    arr[HAND_LEFT_SLICE.start + i] = [nx, ny, decay]
+                    inertial_pts[i] = [nx, ny]
+                self.last_inertial_lh = inertial_pts
+            elif self.lh_missed_count > self.max_inertial_frames:
+                self.last_lh_relative = None
+
+        # 4. Right Hand (21 landmarks) with profile-angle inertial dead reckoning
+        self.last_inertial_rh = None
         if results.right_hand_landmarks:
+            self.rh_missed_count = 0
+            hand_pts = np.zeros((21, 3), dtype=np.float32)
             for i, pt in enumerate(results.right_hand_landmarks.landmark):
                 if i < 21:
+                    hand_pts[i] = [pt.x, pt.y, 1.0]
                     arr[HAND_RIGHT_SLICE.start + i] = [pt.x, pt.y, 1.0]
+
+            anchor = hand_pts[0, :2] if hand_pts[0, 2] > 0 else (rwrist_pos if rwrist_pos is not None else hand_pts[0, :2])
+            self.last_rh_relative = hand_pts[:, :2] - anchor
+        else:
+            self.rh_missed_count += 1
+            if (
+                self.last_rh_relative is not None
+                and self.rh_missed_count <= self.max_inertial_frames
+                and rwrist_pos is not None
+                and rwrist_pos[1] < 0.88
+            ):
+                decay = max(0.25, 1.0 - (self.rh_missed_count * 0.12))
+                inertial_pts = np.zeros((21, 2), dtype=np.float32)
+                for i in range(21):
+                    nx = float(rwrist_pos[0] + self.last_rh_relative[i, 0])
+                    ny = float(rwrist_pos[1] + self.last_rh_relative[i, 1])
+                    arr[HAND_RIGHT_SLICE.start + i] = [nx, ny, decay]
+                    inertial_pts[i] = [nx, ny]
+                self.last_inertial_rh = inertial_pts
+            elif self.rh_missed_count > self.max_inertial_frames:
+                self.last_rh_relative = None
 
         return arr
 
@@ -152,18 +230,20 @@ class RealTimeCapture:
             cv2.LINE_AA,
         )
 
-        # Tracked parts indicators
+        # Tracked parts indicators (Green = direct detection, Cyan = inertial tracking, Gray = absent)
         face_detected = results.face_landmarks is not None
-        rh_detected = results.right_hand_landmarks is not None
-        lh_detected = results.left_hand_landmarks is not None
+        rh_direct = results.right_hand_landmarks is not None
+        lh_direct = results.left_hand_landmarks is not None
+        rh_active = rh_direct or (self.last_inertial_rh is not None)
+        lh_active = lh_direct or (self.last_inertial_lh is not None)
 
         c_face = (0, 255, 0) if face_detected else (80, 80, 80)
-        c_rh = (0, 255, 255) if rh_detected else (80, 80, 80)
-        c_lh = (255, 0, 255) if lh_detected else (80, 80, 80)
+        c_rh = (0, 255, 0) if rh_direct else ((0, 220, 255) if rh_active else (80, 80, 80))
+        c_lh = (0, 255, 0) if lh_direct else ((0, 220, 255) if lh_active else (80, 80, 80))
 
         cv2.putText(frame, "Rostro", (150, 38), cv2.FONT_HERSHEY_SIMPLEX, 0.6, c_face, 2, cv2.LINE_AA)
-        cv2.putText(frame, "Mano D.", (240, 38), cv2.FONT_HERSHEY_SIMPLEX, 0.6, c_rh, 2, cv2.LINE_AA)
-        cv2.putText(frame, "Mano I.", (340, 38), cv2.FONT_HERSHEY_SIMPLEX, 0.6, c_lh, 2, cv2.LINE_AA)
+        cv2.putText(frame, "Mano D." if rh_direct else ("Mano D.*" if rh_active else "Mano D."), (240, 38), cv2.FONT_HERSHEY_SIMPLEX, 0.6, c_rh, 2, cv2.LINE_AA)
+        cv2.putText(frame, "Mano I." if lh_direct else ("Mano I.*" if lh_active else "Mano I."), (350, 38), cv2.FONT_HERSHEY_SIMPLEX, 0.6, c_lh, 2, cv2.LINE_AA)
 
         # Recording Status
         if is_recording:
@@ -226,6 +306,14 @@ class RealTimeCapture:
                 landmark_drawing_spec=self.hand_l_pt,
                 connection_drawing_spec=self.hand_l_conn,
             )
+        elif self.last_inertial_lh is not None:
+            # Draw inertial stabilized hand (cyan)
+            h_f, w_f, _ = frame.shape
+            pts_px = [(int(p[0] * w_f), int(p[1] * h_f)) for p in self.last_inertial_lh]
+            for p1_i, p2_i in [(0,1),(1,2),(2,3),(3,4),(0,5),(5,6),(6,7),(7,8),(5,9),(9,10),(10,11),(11,12),(9,13),(13,14),(14,15),(15,16),(13,17),(17,18),(18,19),(19,20),(0,17)]:
+                cv2.line(frame, pts_px[p1_i], pts_px[p2_i], (0, 220, 255), 2)
+            for pt in pts_px:
+                cv2.circle(frame, pt, 2, (0, 255, 255), -1)
 
         # Right Hand
         if results.right_hand_landmarks:
@@ -236,6 +324,14 @@ class RealTimeCapture:
                 landmark_drawing_spec=self.hand_r_pt,
                 connection_drawing_spec=self.hand_r_conn,
             )
+        elif self.last_inertial_rh is not None:
+            # Draw inertial stabilized hand (cyan)
+            h_f, w_f, _ = frame.shape
+            pts_px = [(int(p[0] * w_f), int(p[1] * h_f)) for p in self.last_inertial_rh]
+            for p1_i, p2_i in [(0,1),(1,2),(2,3),(3,4),(0,5),(5,6),(6,7),(7,8),(5,9),(9,10),(10,11),(11,12),(9,13),(13,14),(14,15),(15,16),(13,17),(17,18),(18,19),(19,20),(0,17)]:
+                cv2.line(frame, pts_px[p1_i], pts_px[p2_i], (0, 220, 255), 2)
+            for pt in pts_px:
+                cv2.circle(frame, pt, 2, (0, 255, 255), -1)
 
         return frame
 

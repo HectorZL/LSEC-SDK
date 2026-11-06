@@ -57,3 +57,4 @@ scratch_*.py
 
 # Excel temp lock files
 ~$*.xlsx
+

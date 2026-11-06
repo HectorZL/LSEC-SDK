@@ -138,6 +138,19 @@ class SignSequenceDataset(Dataset):
         augmented[:, :, 0][nonzero_mask] += noise[:, :, 0][nonzero_mask]
         augmented[:, :, 1][nonzero_mask] += noise[:, :, 1][nonzero_mask]
 
+        # 5. Profile/Side-View Hand Occlusion Simulation
+        # Simulates temporary partial hand disappearance during profile rotations
+        # so the neural network learns to recognize the sign even if a hand turns sideways
+        if np.random.uniform(0.0, 1.0) < 0.35 and n_frames > 6:
+            # Pick left hand (95..116) or right hand (116..137)
+            hand_start = 95 if np.random.uniform(0.0, 1.0) < 0.5 else 116
+            drop_count = np.random.randint(3, 10)
+            drop_indices = np.random.choice(range(hand_start, hand_start + 21), size=drop_count, replace=False)
+            t_len = min(n_frames, np.random.randint(3, 8))
+            t_start = np.random.randint(0, max(1, n_frames - t_len))
+            # Attenuate confidence to simulate profile edge view
+            augmented[t_start : t_start + t_len, drop_indices, 2] *= 0.15
+
         return augmented
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int]:
