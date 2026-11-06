@@ -12,13 +12,15 @@ from .lstm_classifier import SignGRUClassifier, SignLSTMClassifier
 
 def clean_ascii(text: str) -> str:
     """Sanitizes text removing accents, punctuation, and non-ASCII chars for robust comparison."""
+    if text is None:
+        return ""
+    res = str(text)
     replacements = {
         "á": "a", "é": "e", "í": "i", "ó": "o", "ú": "u",
         "Á": "A", "É": "E", "Í": "I", "Ó": "O", "Ú": "U",
         "ñ": "n", "Ñ": "N",
         "¿": "", "¡": "", "?": "", "!": "", ",": "",
     }
-    res = text
     for k, v in replacements.items():
         res = res.replace(k, v)
     return res.encode("ascii", "ignore").decode("ascii")
@@ -135,9 +137,11 @@ class LiveInferenceEngine:
 
         seq_arr = np.array(list(self.buffer), dtype=np.float32)
 
-        # Check if hands are active
-        hands_conf = seq_arr[:, 95:, 2]
-        if np.mean(hands_conf) < 0.10:
+        # Check if hands are active (supports 1-handed or 2-handed signs)
+        lh_conf = seq_arr[:, 95:116, 2]
+        rh_conf = seq_arr[:, 116:137, 2]
+        active_hand_conf = max(float(np.mean(lh_conf)), float(np.mean(rh_conf)))
+        if active_hand_conf < 0.08:
             return 0.0
 
         max_prob = 0.0
@@ -176,9 +180,11 @@ class LiveInferenceEngine:
 
         seq_arr = np.array(list(self.buffer), dtype=np.float32)
 
-        # Check if there is active hand movement/confidence in buffer
-        hands_conf = seq_arr[:, 95:, 2]
-        if np.mean(hands_conf) < 0.14:
+        # Check if there is active hand movement/confidence in buffer (supports 1-handed or 2-handed signs)
+        lh_conf = seq_arr[:, 95:116, 2]
+        rh_conf = seq_arr[:, 116:137, 2]
+        active_hand_conf = max(float(np.mean(lh_conf)), float(np.mean(rh_conf)))
+        if active_hand_conf < 0.09:
             # Hands returned to rest: clear active state so next sign triggers fresh
             self.last_emitted_sign = None
             self.last_stable_prediction = None

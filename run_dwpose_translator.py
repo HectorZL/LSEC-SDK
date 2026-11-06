@@ -92,10 +92,10 @@ def main():
                 kpts, scores = dw_res
                 # Draw skeleton
                 display_frame = detector.draw_skeleton(frame.copy(), kpts, scores)
-                # Check active hands
-                lh_score = np.mean(scores[92:113]) if len(scores) >= 113 else 0.0
-                rh_score = np.mean(scores[113:134]) if len(scores) >= 134 else 0.0
-                hands_detected = bool(lh_score > 0.20 or rh_score > 0.20)
+                # Check active hands (COCO WholeBody: 91..112 left hand, 112..133 right hand)
+                lh_score = np.mean(scores[91:112]) if len(scores) >= 112 else 0.0
+                rh_score = np.mean(scores[112:133]) if len(scores) >= 133 else 0.0
+                hands_detected = bool(lh_score > 0.10 or rh_score > 0.10)
             else:
                 display_frame = frame.copy()
                 hands_detected = False
@@ -217,3 +217,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

@@ -22,3 +22,4 @@ echo.
 python run_dwpose_translator.py
 
 pause
+

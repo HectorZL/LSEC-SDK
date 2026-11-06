@@ -546,7 +546,7 @@ class LSECTutorEngine:
             else:
                 cv2.putText(user_frame, f"Detectando: Esperando movimiento para \"{lesson.clean_label}\"...", (25, det_y), cv2.FONT_HERSHEY_SIMPLEX, 0.52, (160, 160, 160), 1)
         else:
-            warn_txt = "[!] ATENCION: Sube ambas manos frente a la camara para hacer el gesto"
+            warn_txt = "[!] ATENCION: Coloca tu mano frente a la camara para realizar la seña"
             cv2.rectangle(user_frame, (15, det_y - 20), (min(w - 20, 25 + len(warn_txt) * 11 + 20), det_y + 8), (15, 20, 60), -1)
             cv2.putText(user_frame, warn_txt, (25, det_y), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 220, 255), 2)
 

@@ -225,7 +225,7 @@ class DWPoseDetector:
     def extract_lsec_tensor(self, frame: np.ndarray) -> np.ndarray:
         """
         Extracts keypoints and normalizes them into LSEC SDK standard (137, 3) tensor format [x, y, confidence].
-        Normalized to [0, 1] range.
+        Properly maps COCO-WholeBody (133) joints to OpenPose 25 layout and handles 1-handed or 2-handed gestures.
         """
         h, w = frame.shape[:2]
         res = self.process(frame)
@@ -236,43 +236,99 @@ class DWPoseDetector:
 
         kpts, scores = res
 
-        # 1. Pose: DWPose (18 body joints) -> OpenPose 25 layout
-        # 0: Nose, 1: Neck, 2: RShoulder, 3: RElbow, 4: RWrist, 5: LShoulder, 6: LElbow, 7: LWrist...
-        for i in range(min(18, len(kpts))):
-            tensor[i] = [kpts[i, 0] / w, kpts[i, 1] / h, float(scores[i])]
+        # 1. Pose: Map COCO 17 body keypoints to OpenPose 25 layout
+        # COCO: 0: Nose, 1: LEye, 2: REye, 3: LEar, 4: REar,
+        #       5: LShoulder, 6: RShoulder, 7: LElbow, 8: RElbow,
+        #       9: LWrist, 10: RWrist, 11: LHip, 12: RHip,
+        #       13: LKnee, 14: RKnee, 15: LAnkle, 16: RAnkle
 
-        # 2. Face: DWPose 68 landmarks (24..92) -> LSEC SDK 70 face points
-        if len(kpts) >= 92:
-            face_kpts = kpts[24:92]
-            face_sc = scores[24:92]
-            for i in range(min(68, len(face_kpts))):
-                tensor[FACE_SLICE.start + i] = [face_kpts[i, 0] / w, face_kpts[i, 1] / h, float(face_sc[i])]
+        # OpenPose 0: Nose
+        if len(kpts) > 0 and scores[0] > 0.1:
+            tensor[0] = [kpts[0, 0] / w, kpts[0, 1] / h, float(scores[0])]
 
-        # 3. Left Hand: DWPose 21 landmarks (92..113)
-        if len(kpts) >= 113:
-            lh_kpts = kpts[92:113]
-            lh_sc = scores[92:113]
+        # OpenPose 1: Neck (midpoint of LShoulder 5 and RShoulder 6)
+        if len(kpts) > 6 and scores[5] > 0.1 and scores[6] > 0.1:
+            neck_x = (kpts[5, 0] + kpts[6, 0]) / 2.0 / w
+            neck_y = (kpts[5, 1] + kpts[6, 1]) / 2.0 / h
+            neck_c = min(float(scores[5]), float(scores[6]))
+            tensor[1] = [neck_x, neck_y, neck_c]
+
+        # OpenPose 2: RShoulder (COCO 6)
+        if len(kpts) > 6:
+            tensor[2] = [kpts[6, 0] / w, kpts[6, 1] / h, float(scores[6])]
+        # OpenPose 3: RElbow (COCO 8)
+        if len(kpts) > 8:
+            tensor[3] = [kpts[8, 0] / w, kpts[8, 1] / h, float(scores[8])]
+        # OpenPose 4: RWrist (COCO 10)
+        if len(kpts) > 10:
+            tensor[4] = [kpts[10, 0] / w, kpts[10, 1] / h, float(scores[10])]
+
+        # OpenPose 5: LShoulder (COCO 5)
+        if len(kpts) > 5:
+            tensor[5] = [kpts[5, 0] / w, kpts[5, 1] / h, float(scores[5])]
+        # OpenPose 6: LElbow (COCO 7)
+        if len(kpts) > 7:
+            tensor[6] = [kpts[7, 0] / w, kpts[7, 1] / h, float(scores[7])]
+        # OpenPose 7: LWrist (COCO 9)
+        if len(kpts) > 9:
+            tensor[7] = [kpts[9, 0] / w, kpts[9, 1] / h, float(scores[9])]
+
+        # OpenPose 8: MidHip (midpoint of LHip 11 and RHip 12)
+        if len(kpts) > 12 and scores[11] > 0.1 and scores[12] > 0.1:
+            mhip_x = (kpts[11, 0] + kpts[12, 0]) / 2.0 / w
+            mhip_y = (kpts[11, 1] + kpts[12, 1]) / 2.0 / h
+            mhip_c = min(float(scores[11]), float(scores[12]))
+            tensor[8] = [mhip_x, mhip_y, mhip_c]
+
+        # OpenPose 9: RHip (COCO 12), 10: RKnee (COCO 14), 11: RAnkle (COCO 16)
+        if len(kpts) > 16:
+            tensor[9] = [kpts[12, 0] / w, kpts[12, 1] / h, float(scores[12])]
+            tensor[10] = [kpts[14, 0] / w, kpts[14, 1] / h, float(scores[14])]
+            tensor[11] = [kpts[16, 0] / w, kpts[16, 1] / h, float(scores[16])]
+
+        # OpenPose 12: LHip (COCO 11), 13: LKnee (COCO 13), 14: LAnkle (COCO 15)
+        if len(kpts) > 15:
+            tensor[12] = [kpts[11, 0] / w, kpts[11, 1] / h, float(scores[11])]
+            tensor[13] = [kpts[13, 0] / w, kpts[13, 1] / h, float(scores[13])]
+            tensor[14] = [kpts[15, 0] / w, kpts[15, 1] / h, float(scores[15])]
+
+        # OpenPose 15: REye (COCO 2), 16: LEye (COCO 1), 17: REar (COCO 4), 18: LEar (COCO 3)
+        if len(kpts) > 4:
+            tensor[15] = [kpts[2, 0] / w, kpts[2, 1] / h, float(scores[2])]
+            tensor[16] = [kpts[1, 0] / w, kpts[1, 1] / h, float(scores[1])]
+            tensor[17] = [kpts[4, 0] / w, kpts[4, 1] / h, float(scores[4])]
+            tensor[18] = [kpts[3, 0] / w, kpts[3, 1] / h, float(scores[3])]
+
+        # 2. Face: COCO WholeBody 68 landmarks (23..91) -> LSEC SDK 70 points
+        if len(kpts) >= 91:
+            for i in range(min(68, len(kpts) - 23)):
+                tensor[FACE_SLICE.start + i] = [kpts[23 + i, 0] / w, kpts[23 + i, 1] / h, float(scores[23 + i])]
+
+        # 3. Left Hand: COCO WholeBody 21 landmarks (91..112) -> LSEC SDK 95..116
+        if len(kpts) >= 112:
             for i in range(21):
-                tensor[HAND_LEFT_SLICE.start + i] = [lh_kpts[i, 0] / w, lh_kpts[i, 1] / h, float(lh_sc[i])]
+                tensor[HAND_LEFT_SLICE.start + i] = [kpts[91 + i, 0] / w, kpts[91 + i, 1] / h, float(scores[91 + i])]
 
-        # 4. Right Hand: DWPose 21 landmarks (113..134)
-        if len(kpts) >= 134:
-            rh_kpts = kpts[113:134]
-            rh_sc = scores[113:134]
+        # 4. Right Hand: COCO WholeBody 21 landmarks (112..133) -> LSEC SDK 116..137
+        if len(kpts) >= 133:
             for i in range(21):
-                tensor[HAND_RIGHT_SLICE.start + i] = [rh_kpts[i, 0] / w, rh_kpts[i, 1] / h, float(rh_sc[i])]
+                tensor[HAND_RIGHT_SLICE.start + i] = [kpts[112 + i, 0] / w, kpts[112 + i, 1] / h, float(scores[112 + i])]
 
         return tensor
 
     def draw_skeleton(self, frame: np.ndarray, kpts: np.ndarray, scores: np.ndarray, thresh: float = 0.25) -> np.ndarray:
-        """Visualizes the 133 DWPose whole-body skeleton with distinct colors for body, hands, and face."""
-        # 1. Pose connections
+        """Visualizes the 133 DWPose whole-body skeleton with true COCO topology."""
+        # 1. Pose connections (COCO 17 layout)
         body_edges = [
-            (0, 1), (1, 2), (2, 3), (3, 4),   # Right arm
-            (1, 5), (5, 6), (6, 7),           # Left arm
-            (1, 8), (8, 9), (9, 10),          # Right leg
-            (1, 11), (11, 12), (12, 13),      # Left leg
-            (0, 14), (14, 16), (0, 15), (15, 17) # Face outline
+            (0, 1), (0, 2),        # Nose to Eyes
+            (1, 3), (2, 4),        # Eyes to Ears
+            (5, 6),                # Shoulders
+            (5, 7), (7, 9),        # Left arm: Shoulder -> Elbow -> Wrist
+            (6, 8), (8, 10),       # Right arm: Shoulder -> Elbow -> Wrist
+            (5, 11), (6, 12),      # Torso: Shoulders to Hips
+            (11, 12),              # Hips
+            (11, 13), (13, 15),    # Left leg
+            (12, 14), (14, 16),    # Right leg
         ]
         for p1, p2 in body_edges:
             if p1 < len(scores) and p2 < len(scores):
@@ -280,6 +336,11 @@ class DWPoseDetector:
                     pt1 = (int(kpts[p1, 0]), int(kpts[p1, 1]))
                     pt2 = (int(kpts[p2, 0]), int(kpts[p2, 1]))
                     cv2.line(frame, pt1, pt2, (0, 255, 0), 2)
+
+        # Draw head / body joints
+        for i in range(min(17, len(kpts))):
+            if scores[i] > thresh:
+                cv2.circle(frame, (int(kpts[i, 0]), int(kpts[i, 1])), 3, (0, 220, 0), -1)
 
         # 2. Hand connections
         hand_edges = [
@@ -290,18 +351,18 @@ class DWPoseDetector:
             (13,17), (17,18), (18,19), (19,20),
             (0,17)
         ]
-        # Left hand (92..113) - Magenta
+        # Left hand (91..112) - Magenta
         for e1, e2 in hand_edges:
-            p1, p2 = 92 + e1, 92 + e2
+            p1, p2 = 91 + e1, 91 + e2
             if p1 < len(scores) and p2 < len(scores):
                 if scores[p1] > thresh and scores[p2] > thresh:
                     pt1 = (int(kpts[p1, 0]), int(kpts[p1, 1]))
                     pt2 = (int(kpts[p2, 0]), int(kpts[p2, 1]))
                     cv2.line(frame, pt1, pt2, (255, 0, 255), 2)
 
-        # Right hand (113..134) - Cyan
+        # Right hand (112..133) - Cyan
         for e1, e2 in hand_edges:
-            p1, p2 = 113 + e1, 113 + e2
+            p1, p2 = 112 + e1, 112 + e2
             if p1 < len(scores) and p2 < len(scores):
                 if scores[p1] > thresh and scores[p2] > thresh:
                     pt1 = (int(kpts[p1, 0]), int(kpts[p1, 1]))
@@ -309,9 +370,9 @@ class DWPoseDetector:
                     cv2.line(frame, pt1, pt2, (0, 255, 255), 2)
 
         # Draw hand joints
-        for i in range(92, min(134, len(kpts))):
+        for i in range(91, min(133, len(kpts))):
             if scores[i] > thresh:
-                color = (255, 100, 255) if i < 113 else (100, 255, 255)
+                color = (255, 100, 255) if i < 112 else (100, 255, 255)
                 cv2.circle(frame, (int(kpts[i, 0]), int(kpts[i, 1])), 3, color, -1)
 
         return frame
