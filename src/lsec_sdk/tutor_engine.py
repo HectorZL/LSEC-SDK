@@ -69,7 +69,7 @@ def matches_target(pred_label: Optional[str], target_label: str) -> bool:
 def classify_section(label: str) -> str:
     """Categorizes sign labels into intuitive pedagogical sections."""
     lbl = clean_ascii(label).upper()
-    if any(w in lbl for w in ["HOLA", "CHAO", "ADIOS", "BUENOS DIAS", "BUENAS TARDES", "BUENAS NOCHES", "DE NADA", "UN MOMENTO", "HACE TIEMPO", "ABRAZAR"]):
+    if any(w in lbl for w in ["ADIOS", "BUENOS DIAS", "BUENAS TARDES", "BUENAS NOCHES", "DE NADA", "UN MOMENTO", "HACE TIEMPO", "ABRAZAR"]):
         return "SALUDOS"
     if any(w in lbl for w in ["DONDE ESTUDIO", "CUENTA", "CREDITO", "REQUISITOS", "AYUDAR", "ABOGADO", "ABONAR", "FOLLETO", "A DIARIO"]):
         return "TRABAJO"
@@ -130,6 +130,8 @@ class LSECTutorEngine:
         self.best_practice_conf = 0.0
         self.practice_start_time = 0.0
         self.countdown_remaining = 3
+        self.practice_match_streak = 0
+        self.required_streak = 7  # Require 7 frames (~0.35s) of sustained execution before triggering success
 
         # Interactive On-Screen Menu
         self.menu_open = False
@@ -293,12 +295,14 @@ class LSECTutorEngine:
         self.state_start_time = time.time()
         self.last_frame_tick = time.time()
         self.best_practice_conf = 0.0
+        self.practice_match_streak = 0
 
     def skip_demo(self):
         """Skips demonstration directly to practice imitation mode."""
         self.state = TutorState.PRACTICE
         self.practice_start_time = time.time()
         self.best_practice_conf = 0.0
+        self.practice_match_streak = 0
 
     def _render_teacher_canvas(self, width: int = 340, height: int = 240) -> np.ndarray:
         """Renders dark sleek viewport with the teacher's stick figure."""
@@ -433,7 +437,7 @@ class LSECTutorEngine:
         lesson = self.current_lesson
         now = time.time()
 
-        is_match = False
+        is_frame_match = False
         effective_score = float(target_conf)
 
         if lesson is not None:
@@ -442,25 +446,18 @@ class LSECTutorEngine:
                 if pred_conf > effective_score:
                     effective_score = pred_conf
 
-            # A match occurs if targeted confidence is solid (>=0.48) or predicted label matched
-            if effective_score >= 0.48:
-                is_match = True
-            elif pred_label is not None and matches_target(pred_label, lesson.clean_label) and pred_conf >= 0.42:
-                is_match = True
-
-            if is_match and effective_score > self.best_practice_conf:
-                self.best_practice_conf = effective_score
+            # A frame match requires confident recognition of the target sign (>=0.70)
+            if effective_score >= 0.70:
+                is_frame_match = True
+            elif pred_label is not None and matches_target(pred_label, lesson.clean_label) and pred_conf >= 0.68:
+                is_frame_match = True
 
         # -------------------------------------------------------------
         # 1. State Machine Progression (Paused when menu is open)
         # -------------------------------------------------------------
         if not self.menu_open and lesson is not None:
-            # Immediate recognition even during DEMO or COUNTDOWN if user executes the sign!
-            if is_match:
-                self.state = TutorState.SUCCESS
-                self.state_start_time = now
-
-            elif self.state == TutorState.DEMO:
+            if self.state == TutorState.DEMO:
+                self.practice_match_streak = 0
                 step_dt = 1.0 / (lesson.fps * (0.55 if self.slow_motion else 1.0))
                 if now - self.last_frame_tick >= step_dt:
                     self.demo_frame_idx += 1
@@ -476,24 +473,36 @@ class LSECTutorEngine:
                             self.state_start_time = now
 
             elif self.state == TutorState.COUNTDOWN:
+                self.practice_match_streak = 0
                 elapsed = now - self.state_start_time
                 self.countdown_remaining = max(1, 3 - int(elapsed))
                 if elapsed >= 3.0:
                     self.state = TutorState.PRACTICE
                     self.practice_start_time = now
                     self.best_practice_conf = 0.0
+                    self.practice_match_streak = 0
 
             elif self.state == TutorState.PRACTICE:
-                if is_match:
+                if is_frame_match:
+                    self.practice_match_streak += 1
+                    if effective_score > self.best_practice_conf:
+                        self.best_practice_conf = effective_score
+                else:
+                    self.practice_match_streak = max(0, self.practice_match_streak - 1)
+
+                # Require sustained execution streak (7 frames) to prevent premature trigger
+                if self.practice_match_streak >= self.required_streak:
                     self.state = TutorState.SUCCESS
                     self.state_start_time = now
+                    self.practice_match_streak = 0
 
                 # Timeout resets demo
                 if (now - self.practice_start_time) > self.practice_timeout_sec:
                     self.reset_to_demo()
 
             elif self.state == TutorState.SUCCESS:
-                if (now - self.state_start_time) > 3.8:
+                self.practice_match_streak = 0
+                if (now - self.state_start_time) > 3.5:
                     self.next_lesson()
 
         # -------------------------------------------------------------
@@ -529,13 +538,22 @@ class LSECTutorEngine:
 
         # Live Detection Feedback Bar (above bottom bar)
         det_y = h - 68
+        streak_pct = min(1.0, self.practice_match_streak / float(self.required_streak))
         if hands_detected:
             if self.state == TutorState.SUCCESS:
                 det_txt = f"[OK] SENA CORRECTA: \"{lesson.clean_label}\" ({int(self.best_practice_conf * 100)}%)"
                 cv2.rectangle(user_frame, (15, det_y - 20), (min(w - 20, 25 + len(det_txt) * 11 + 25), det_y + 8), (15, 38, 15), -1)
                 cv2.putText(user_frame, det_txt, (25, det_y), cv2.FONT_HERSHEY_SIMPLEX, 0.58, (0, 255, 120), 2)
-            elif effective_score >= 0.30:
-                color = (0, 255, 120) if effective_score >= 0.48 else (0, 220, 255)
+            elif self.state == TutorState.PRACTICE and streak_pct > 0:
+                det_txt = f"Imitando \"{lesson.clean_label}\": {int(streak_pct * 100)}% sostenido ({int(effective_score * 100)}%)"
+                cv2.rectangle(user_frame, (15, det_y - 20), (min(w - 20, 25 + len(det_txt) * 11 + 25), det_y + 8), (20, 36, 20), -1)
+                cv2.putText(user_frame, det_txt, (25, det_y), cv2.FONT_HERSHEY_SIMPLEX, 0.58, (0, 255, 120), 2)
+                # Draw imitation progress bar
+                pb_x, pb_y, pb_w, pb_h = 25, det_y + 12, 280, 8
+                cv2.rectangle(user_frame, (pb_x, pb_y), (pb_x + pb_w, pb_y + pb_h), (40, 45, 55), -1)
+                cv2.rectangle(user_frame, (pb_x, pb_y), (pb_x + int(pb_w * streak_pct), pb_y + pb_h), (0, 255, 120), -1)
+            elif effective_score >= 0.35:
+                color = (0, 255, 120) if effective_score >= 0.70 else (0, 220, 255)
                 det_txt = f"Practicando \"{lesson.clean_label}\" - Coincidencia: {int(effective_score * 100)}%"
                 cv2.rectangle(user_frame, (15, det_y - 20), (min(w - 20, 25 + len(det_txt) * 11 + 25), det_y + 8), (20, 26, 20), -1)
                 cv2.putText(user_frame, det_txt, (25, det_y), cv2.FONT_HERSHEY_SIMPLEX, 0.58, color, 2)

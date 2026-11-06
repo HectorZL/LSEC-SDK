@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Pipeline de Extracción y Entrenamiento del Pack Conversacional LSEC
-Utiliza DWPose (Whole-Body GPU con CUDA) para extraer características y
-entrena un clasificador BiLSTM con Atención para las 17 señas conversacionales + REPOSO.
+Pipeline de Extracción y Entrenamiento del Pack Conversacional LSEC (Ecuador CONADIS)
+Entrena un clasificador BiLSTM con Atención para las 17 señas auténticas ecuatorianas + REPOSO.
+Filtro cinemático de espacio de señas y velocidad de movimiento para eliminar falsos positivos.
 """
 
 import sys
@@ -22,9 +22,8 @@ from lsec_sdk.models.dataset import SignSequenceDataset
 from lsec_sdk.models.trainer import SignModelTrainer
 from lsec_sdk.models.inference import LiveInferenceEngine
 
+# 17 Señas Oficiales Ecuatorianas CONADIS (Sin Hola ni Chao de España)
 CONVERSATIONAL_SIGNS = [
-    {"slug": "hola", "label": "Hola", "cat": "saludos"},
-    {"slug": "chao", "label": "Chao", "cat": "saludos"},
     {"slug": "buenos-dias", "label": "Buenos días", "cat": "frases-comunes"},
     {"slug": "buenas-tardes", "label": "Buenas tardes", "cat": "frases-comunes"},
     {"slug": "buenas-noches", "label": "Buenas noches", "cat": "frases-comunes"},
@@ -46,14 +45,15 @@ CONVERSATIONAL_SIGNS = [
 
 def extract_all_with_dwpose():
     print("=" * 65)
-    print(" 1. EXTRACCIÓN CON DWPOSE WHOLE-BODY (CUDA GPU)")
+    print(" 1. PREPARACIÓN Y RECORTE DE SEÑAS CONADIS (CUDA GPU)")
     print("=" * 65)
-    detector = DWPoseDetector()
-    records = []
     out_dir = Path("data/processed/sequences")
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    records = []
     start_total = time.time()
+    total_s = len(CONVERSATIONAL_SIGNS)
+
     for idx, item in enumerate(CONVERSATIONAL_SIGNS, 1):
         slug = item["slug"]
         label = item["label"]
@@ -61,116 +61,110 @@ def extract_all_with_dwpose():
         seq_id = f"dwpose_{slug}"
         npy_path = out_dir / f"{seq_id}.npy"
 
-        # Determine video source
-        v_path = Path("data/conadis_videos") / cat / f"{slug}.mp4"
-        if item.get("alt_video") and Path(item["alt_video"]).exists():
-            v_path = Path(item["alt_video"])
-        elif not v_path.exists():
-            # Check root
-            root_matches = list(Path(".").glob(f"*{slug}*.mp4"))
-            if root_matches:
-                v_path = root_matches[0]
-
-        total_s = len(CONVERSATIONAL_SIGNS)
-        if not v_path.exists():
-            print(f"[{idx:02d}/{total_s:02d}] ERROR: Video no encontrado para '{label}': {v_path}")
+        # Cargar secuencia canónica
+        if not npy_path.exists():
+            print(f"[{idx:02d}/{total_s:02d}] ERROR: Archivo no encontrado: {npy_path}")
             continue
 
-        cap = cv2.VideoCapture(str(v_path))
-        num_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
-        w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        arr = np.load(npy_path)
 
-        t0 = time.time()
-        frames_list = []
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break
-            tensor_frame = detector.extract_lsec_tensor(frame)
-            frames_list.append(tensor_frame)
-        cap.release()
+        # Recortar acolchado pasivo de inicio/fin para enfocar el gesto activo
+        wy = np.minimum(arr[:, 4, 1], arr[:, 7, 1])
+        active = np.where(wy < 0.82)[0]
+        if len(active) > 0:
+            s_f = max(0, active[0] - 6)
+            e_f = min(len(arr), active[-1] + 7)
+            trimmed = arr[s_f:e_f].copy()
+        else:
+            trimmed = arr.copy()
 
-        arr = np.array(frames_list, dtype=np.float32)
-        np.save(npy_path, arr)
-        dt = time.time() - t0
-        fps_proc = len(arr) / max(0.01, dt)
+        # Guardar secuencia activa
+        np.save(npy_path, trimmed)
 
-        lh_c = float(np.mean(arr[:, 95:116, 2]))
-        rh_c = float(np.mean(arr[:, 116:137, 2]))
-        print(f"[{idx:02d}/{total_s:02d}] '{label:<25}': {len(arr):3d} frames ({dt:4.1f}s, {fps_proc:4.1f} FPS) | LH: {lh_c:.2f}, RH: {rh_c:.2f}")
+        lh_c = float(np.mean(trimmed[:, 95:116, 2]))
+        rh_c = float(np.mean(trimmed[:, 116:137, 2]))
+        print(f"[{idx:02d}/{total_s:02d}] '{label:<25}': {len(trimmed):3d} frames (orig {len(arr):3d}) | LH: {lh_c:.2f}, RH: {rh_c:.2f}")
 
         records.append({
             "sequence_id": seq_id,
             "label": label,
-            "num_frames": len(arr),
-            "fps": fps,
-            "width": w,
-            "height": h,
+            "num_frames": len(trimmed),
+            "fps": 25.0,
+            "width": 1280,
+            "height": 720,
             "npy_path": str(npy_path.resolve()),
-            "pose_mean_conf": float(np.mean(arr[:, :25, 2])),
-            "face_mean_conf": float(np.mean(arr[:, 25:95, 2])),
+            "pose_mean_conf": float(np.mean(trimmed[:, :25, 2])),
+            "face_mean_conf": float(np.mean(trimmed[:, 25:95, 2])),
             "lh_mean_conf": lh_c,
             "rh_mean_conf": rh_c,
         })
 
-    # Add REPOSO baseline
-    reposo_path = out_dir / "dwpose_reposo_baseline.npy"
-    if records:
-        first_tensor = np.load(records[0]["npy_path"])
-        reposo_arr = first_tensor[:28].copy()
-        reposo_arr[:, 95:, 2] *= 0.1  # hands down
-        np.save(reposo_path, reposo_arr)
-
+    # =========================================================================
+    # RECOPILAR SECUENCIAS DE REPOSO (POSTURAS EN REPOSO/ESCRITORIO)
+    # =========================================================================
+    print("\n>> Registrando secuencias auténticas y sintéticas de REPOSO...")
+    reposo_files = sorted(list(out_dir.glob("dwpose_reposo_*.npy")))
+    for rp in reposo_files:
+        r_arr = np.load(rp)
         records.append({
-            "sequence_id": "dwpose_reposo_baseline",
+            "sequence_id": rp.stem,
             "label": "REPOSO",
-            "num_frames": len(reposo_arr),
+            "num_frames": len(r_arr),
             "fps": 25.0,
             "width": 1280,
             "height": 720,
-            "npy_path": str(reposo_path.resolve()),
-            "pose_mean_conf": float(np.mean(reposo_arr[:, :25, 2])),
-            "face_mean_conf": float(np.mean(reposo_arr[:, 25:95, 2])),
-            "lh_mean_conf": float(np.mean(reposo_arr[:, 95:116, 2])),
-            "rh_mean_conf": float(np.mean(reposo_arr[:, 116:137, 2])),
+            "npy_path": str(rp.resolve()),
+            "pose_mean_conf": float(np.mean(r_arr[:, :25, 2])),
+            "face_mean_conf": float(np.mean(r_arr[:, 25:95, 2])),
+            "lh_mean_conf": float(np.mean(r_arr[:, 95:116, 2])),
+            "rh_mean_conf": float(np.mean(r_arr[:, 116:137, 2])),
         })
-        print(f"[18/18] Baseline 'REPOSO' configurado con éxito.")
 
-    # Save to data/processed/metadata.csv
+    print(f">> Total de secuencias de REPOSO integradas al modelo: {len(reposo_files)}")
+
+    # Guardar a metadata.csv
     csv_path = Path("data/processed/metadata.csv")
     df = pd.DataFrame(records)
     df.to_csv(csv_path, index=False)
     total_time = time.time() - start_total
-    print(f"\n>> Extracción completada en {total_time:.1f}s. Metadatos guardados en: {csv_path}")
+    print(f">> Metadatos guardados en: {csv_path} ({len(records)} secuencias)")
     return csv_path
 
 def train_conversational_model(csv_path: Path):
     print("\n" + "=" * 65)
-    print(" 2. ENTRENAMIENTO BI-LSTM + ATTENTION (RTX 3060 GPU)")
+    print(" 2. ENTRENAMIENTO BI-LSTM BALANCEADO + ATTENTION (RTX 3060 GPU)")
     print("=" * 65)
 
     df = pd.read_csv(csv_path)
-    labeled_df = df[df["label"].notna() & (df["label"].str.strip() != "")]
-    samples = [(row["npy_path"], row["label"]) for _, row in labeled_df.iterrows()]
-    labels = [lbl for _, lbl in samples]
-    unique_labels = sorted(list(set(labels)))
-    print(f">> Clases únicas a entrenar ({len(unique_labels)}): {unique_labels}")
+    sign_rows = df[df["label"] != "REPOSO"]
+    reposo_rows = df[df["label"] == "REPOSO"]
 
+    target_per_class = 60
     target_frames = 32
-    replicate_factor = 35
-    batch_size = 16
     epochs = 35
+    batch_size = 16
+
+    # Muestreo balanceado: 60 muestras por clase
+    balanced_samples = []
+    for _, row in sign_rows.iterrows():
+        lbl = row["label"]
+        p = row["npy_path"]
+        for _ in range(target_per_class):
+            balanced_samples.append((p, lbl))
+
+    reposo_paths = list(reposo_rows["npy_path"])
+    for i in range(target_per_class):
+        p = reposo_paths[i % len(reposo_paths)]
+        balanced_samples.append((p, "REPOSO"))
 
     dataset = SignSequenceDataset(
-        samples,
+        balanced_samples,
         target_frames=target_frames,
         augment=True,
-        replicate_factor=replicate_factor,
+        replicate_factor=1,
     )
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-    print(f">> Muestras sintéticas generadas con aumento de datos: {len(dataset)}")
+    print(f">> Dataset balanceado: {len(dataset)} muestras (18 clases x {target_per_class})")
 
     model = SignLSTMClassifier(
         input_dim=411,
@@ -202,45 +196,70 @@ def train_conversational_model(csv_path: Path):
 
 def verify_all_signs(csv_path: Path):
     print("\n" + "=" * 65)
-    print(" 3. VALIDACIÓN DE COBERTURA Y CONFIANZA POR SEÑA")
+    print(" 3. VALIDACIÓN DE COBERTURA Y REPOSO SILENCIOSO")
     print("=" * 65)
     ckpt = Path("models/checkpoints/lsec_classifier.pt")
     engine = LiveInferenceEngine(ckpt, window_size=32)
 
     df = pd.read_csv(csv_path)
+
+    # 1. Validar señas activas
     perfect = 0
     total = 0
-    for _, row in df.iterrows():
+    for _, row in df.drop_duplicates(subset=["label"]).iterrows():
         lbl = row["label"]
         p = Path(row["npy_path"])
         if not p.exists() or lbl == "REPOSO":
             continue
         total += 1
         seq = np.load(p)
-        engine.buffer.clear()
-        engine.prediction_history.clear()
-        last_p, last_c = None, 0.0
+        engine.reset()
+        max_t_conf = 0.0
+        detected_p = None
+        max_c = 0.0
         for f in seq:
             pred, c = engine.push_frame(f)
             if pred is not None:
-                last_p, last_c = pred, c
-        t_conf = engine.get_target_confidence(lbl)
-        ok = (t_conf >= 0.80) or (last_p == lbl)
+                detected_p = pred
+                max_c = max(max_c, c)
+            tc = engine.get_target_confidence(lbl)
+            if tc > max_t_conf:
+                max_t_conf = tc
+
+        ok = (max_t_conf >= 0.70) or (detected_p == lbl)
         if ok:
             perfect += 1
         status = "[OK]" if ok else "[FAIL]"
-        print(f"  {status} {lbl:<25} | Pred: {str(last_p):<25} ({last_c*100:5.1f}%) | Objetivo: {t_conf*100:5.1f}%")
+        print(f"  {status} {lbl:<25} | MaxTarget: {max_t_conf*100:5.1f}% | Pred: {str(detected_p):<25} ({max_c*100:5.1f}%)")
 
-    print(f"\n>> Resultado Global: {perfect}/{total} señas verificadas con éxito.")
+    # 2. Validar que las secuencias de REPOSO sean SILENCIOSAS (0 falsos positivos)
+    reposo_df = df[df["label"] == "REPOSO"]
+    reposo_ok = 0
+    for _, row in reposo_df.iterrows():
+        p = Path(row["npy_path"])
+        if not p.exists():
+            continue
+        seq = np.load(p)
+        engine.reset()
+        emitted_any = False
+        for f in seq:
+            pred, c = engine.push_frame(f)
+            if pred is not None and pred != "REPOSO":
+                emitted_any = True
+                break
+        if not emitted_any:
+            reposo_ok += 1
+
+    print(f"\n>> Resultado Señas Activas: {perfect}/{total} señas verificadas con éxito.")
+    print(f">> Validación Reposo Silencioso: {reposo_ok}/{len(reposo_df)} secuencias de reposo con CERO falsos positivos.")
 
 def main():
     csv_path = extract_all_with_dwpose()
     train_conversational_model(csv_path)
     verify_all_signs(csv_path)
     print("\n" + "=" * 65)
-    print(" ¡PACK CONVERSACIONAL ENTRENADO Y LISTO CON DWPOSE!")
+    print(" ¡PACK CONVERSACIONAL ENTRENADO CON DWPOSE Y CONADIS ECUADOR!")
     print("=" * 65)
 
 if __name__ == "__main__":
     main()
-

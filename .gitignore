@@ -48,6 +48,9 @@ Thumbs.db
 *.mkv
 *.mov
 openpose_output/
+data/check_conadis_signers/
+data/processed/archive/
+models/checkpoints/archive/
 data/conadis_videos/
 data/raw/
 models/dwpose/

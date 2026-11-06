@@ -33,7 +33,7 @@ class LiveInferenceEngine:
         self,
         checkpoint_path: Union[str, Path],
         window_size: int = 32,
-        min_prediction_confidence: float = 0.60,
+        min_prediction_confidence: float = 0.72,
         device: Optional[str] = None,
     ):
         self.window_size = window_size
@@ -75,7 +75,7 @@ class LiveInferenceEngine:
 
         # Multi-scale buffer: stores up to 90 frames (~3.6s) to capture both short and long phrases
         self.buffer: Deque[np.ndarray] = deque(maxlen=90)
-        self.prediction_history: Deque[str] = deque(maxlen=8)
+        self.prediction_history: Deque[str] = deque(maxlen=10)
         self.last_stable_prediction: Optional[str] = None
         self.consecutive_count: int = 0
 
@@ -83,7 +83,7 @@ class LiveInferenceEngine:
         self.frame_counter: int = 0
         self.last_emitted_sign: Optional[str] = None
         self.last_emitted_frame: int = -999
-        self.cooldown_frames: int = 20  # ~0.7 seconds before emitting a different sign
+        self.cooldown_frames: int = 25  # ~1.0 second before emitting a different sign
 
         # Fast lookup cache for clean target label to index
         self._target_index_cache: Dict[str, Optional[int]] = {}
@@ -103,30 +103,35 @@ class LiveInferenceEngine:
         if target_clean in self._target_index_cache:
             return self._target_index_cache[target_clean]
 
-        target_idx = None
-        # First try exact cleaned match or substring
+        # 1. First priority: Exact cleaned match (avoids confusing 'DONDE' with 'DONDE ESTUDIO')
         for idx, lbl in self.label_encoder.idx_to_label.items():
             lbl_clean = clean_ascii(lbl).strip().upper()
-            if lbl_clean == target_clean or target_clean in lbl_clean or lbl_clean in target_clean:
-                target_idx = idx
-                break
+            if lbl_clean == target_clean:
+                self._target_index_cache[target_clean] = idx
+                return idx
 
-        # Fallback to key token overlap
-        if target_idx is None:
-            t_words = [w for w in target_clean.split() if len(w) > 3]
-            for idx, lbl in self.label_encoder.idx_to_label.items():
-                l_words = [w for w in clean_ascii(lbl).strip().upper().split() if len(w) > 3]
-                if any(tw in l_words for tw in t_words) or any(lw in t_words for lw in l_words):
-                    target_idx = idx
-                    break
+        # 2. Second priority: Substring match
+        for idx, lbl in self.label_encoder.idx_to_label.items():
+            lbl_clean = clean_ascii(lbl).strip().upper()
+            if target_clean in lbl_clean or lbl_clean in target_clean:
+                self._target_index_cache[target_clean] = idx
+                return idx
 
-        self._target_index_cache[target_clean] = target_idx
-        return target_idx
+        # 3. Third priority: Key token overlap
+        t_words = [w for w in target_clean.split() if len(w) > 3]
+        for idx, lbl in self.label_encoder.idx_to_label.items():
+            l_words = [w for w in clean_ascii(lbl).strip().upper().split() if len(w) > 3]
+            if any(tw in l_words for tw in t_words) or any(lw in t_words for lw in l_words):
+                self._target_index_cache[target_clean] = idx
+                return idx
+
+        self._target_index_cache[target_clean] = None
+        return None
 
     def get_target_confidence(self, target_label: str) -> float:
         """
         Evaluates the current multi-scale buffer specifically for the target sign probability.
-        Searches across short (32), medium (56, 80), and full temporal scales with accent insensitivity.
+        Searches across short (32), medium (56, 80), and full temporal scales with kinematic gating.
         """
         if len(self.buffer) < 16:
             return 0.0
@@ -137,11 +142,27 @@ class LiveInferenceEngine:
 
         seq_arr = np.array(list(self.buffer), dtype=np.float32)
 
-        # Check if hands are active (supports 1-handed or 2-handed signs)
-        lh_conf = seq_arr[:, 95:116, 2]
-        rh_conf = seq_arr[:, 116:137, 2]
-        active_hand_conf = max(float(np.mean(lh_conf)), float(np.mean(rh_conf)))
-        if active_hand_conf < 0.08:
+        # Kinematic Signing Space & Motion Gate:
+        # Check wrist elevation (Pose keypoints: 4 RWrist, 7 LWrist)
+        n_check = min(12, len(seq_arr))
+        rw_y = seq_arr[-n_check:, 4, 1]
+        lw_y = seq_arr[-n_check:, 7, 1]
+        rw_c = seq_arr[-n_check:, 4, 2]
+        lw_c = seq_arr[-n_check:, 7, 2]
+
+        # In sign language, signs are articulated in the signing space (above lap/desk, Y < 0.82)
+        r_elevated = bool(np.min(rw_y) < 0.82 and np.mean(rw_c) > 0.15)
+        l_elevated = bool(np.min(lw_y) < 0.82 and np.mean(lw_c) > 0.15)
+
+        # Check motion velocity in hands over the recent window
+        rh_diff = np.diff(seq_arr[-n_check:, 116:137, :2], axis=0) if len(seq_arr) >= n_check else np.zeros((1, 21, 2))
+        lh_diff = np.diff(seq_arr[-n_check:, 95:116, :2], axis=0) if len(seq_arr) >= n_check else np.zeros((1, 21, 2))
+        rh_motion = float(np.mean(np.abs(rh_diff))) if len(rh_diff) > 0 else 0.0
+        lh_motion = float(np.mean(np.abs(lh_diff))) if len(lh_diff) > 0 else 0.0
+        active_motion = max(rh_motion, lh_motion)
+
+        # If both wrists are in resting position (lap/table) or motionless:
+        if not (r_elevated or l_elevated) or active_motion < 0.0030:
             return 0.0
 
         max_prob = 0.0
@@ -171,21 +192,35 @@ class LiveInferenceEngine:
         """
         Pushes a new frame (137, 3) into the sliding window.
         Returns (predicted_label, probability) with temporal debouncing and anti-flicker cooldown.
+        Applies kinematic signing space elevation and motion filtering to eliminate idle false positives.
         """
         self.frame_counter += 1
         self.buffer.append(frame_keypoints)
 
-        if len(self.buffer) < max(12, self.window_size // 2):
+        if len(self.buffer) < max(16, self.window_size // 2):
             return None, 0.0
 
         seq_arr = np.array(list(self.buffer), dtype=np.float32)
 
-        # Check if there is active hand movement/confidence in buffer (supports 1-handed or 2-handed signs)
-        lh_conf = seq_arr[:, 95:116, 2]
-        rh_conf = seq_arr[:, 116:137, 2]
-        active_hand_conf = max(float(np.mean(lh_conf)), float(np.mean(rh_conf)))
-        if active_hand_conf < 0.09:
-            # Hands returned to rest: clear active state so next sign triggers fresh
+        # 1. Kinematic Filter: Check signing space elevation and kinetic motion
+        # (Supports both 1-handed and 2-handed Ecuadorian signs)
+        n_check = min(12, len(seq_arr))
+        rw_y = seq_arr[-n_check:, 4, 1]
+        lw_y = seq_arr[-n_check:, 7, 1]
+        rw_c = seq_arr[-n_check:, 4, 2]
+        lw_c = seq_arr[-n_check:, 7, 2]
+
+        r_elevated = bool(np.min(rw_y) < 0.82 and np.mean(rw_c) > 0.15)
+        l_elevated = bool(np.min(lw_y) < 0.82 and np.mean(lw_c) > 0.15)
+
+        rh_diff = np.diff(seq_arr[-n_check:, 116:137, :2], axis=0) if len(seq_arr) >= n_check else np.zeros((1, 21, 2))
+        lh_diff = np.diff(seq_arr[-n_check:, 95:116, :2], axis=0) if len(seq_arr) >= n_check else np.zeros((1, 21, 2))
+        rh_motion = float(np.mean(np.abs(rh_diff))) if len(rh_diff) > 0 else 0.0
+        lh_motion = float(np.mean(np.abs(lh_diff))) if len(lh_diff) > 0 else 0.0
+        active_motion = max(rh_motion, lh_motion)
+
+        if not (r_elevated or l_elevated) or active_motion < 0.0030:
+            # Hands are resting down or motionless: clear prediction state and emit silence
             self.last_emitted_sign = None
             self.last_stable_prediction = None
             self.prediction_history.clear()
@@ -228,16 +263,17 @@ class LiveInferenceEngine:
         else:
             self.prediction_history.append("REPOSO")
 
-        # Check temporal consistency: candidate must appear in at least 4 of the last 6 predictions
-        recent = list(self.prediction_history)[-6:]
+        # Temporal debouncing window: candidate must be dominant in at least 7 of last 10 predictions
+        # This prevents premature firing during arm transition and ensures the user actually executed the gesture
+        recent = list(self.prediction_history)[-10:]
         non_reposo = [lbl for lbl in recent if lbl != "REPOSO"]
 
         if non_reposo:
             candidate = max(set(non_reposo), key=non_reposo.count)
             count = non_reposo.count(candidate)
 
-            # Strict stability condition: at least 4 consistent frames
-            if count >= 4:
+            # Strict stability condition: at least 7 consistent frames out of 10
+            if count >= 7:
                 time_since_last = self.frame_counter - self.last_emitted_frame
                 # Allow re-affirming same sign or emitting new sign after cooldown period
                 if candidate == self.last_emitted_sign or time_since_last >= self.cooldown_frames:

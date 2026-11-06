@@ -132,7 +132,7 @@ def main():
             if tutor.enabled:
                 display_frame = tutor.update_and_render(
                     display_frame,
-                    pred_label=current_prediction if (time.time() - last_detection_time < 2.5) else None,
+                    pred_label=current_prediction if (time.time() - last_detection_time < 0.8) else None,
                     pred_conf=current_confidence,
                     hands_detected=hands_detected,
                     target_conf=target_conf,
@@ -209,6 +209,9 @@ def main():
                 # Confirmar selección: ENTER o ESPACIO
                 if raw_key in (13, 10) or key in (13, 10, 32):
                     tutor.menu_select()
+                    engine.reset()
+                    current_prediction = None
+                    current_confidence = 0.0
                     print(f">> Seña elegida: {tutor.current_lesson.clean_label if tutor.current_lesson else ''}")
 
                 # Subir en la lista: 'W', 'w' o Flecha Arriba
@@ -254,17 +257,32 @@ def main():
                     tutor.toggle_menu()
                 elif key in (ord("c"), ord("C")):
                     tutor.cycle_section()
+                    engine.reset()
+                    current_prediction = None
+                    current_confidence = 0.0
                 elif key in (ord("n"), ord("N")):
                     tutor.next_lesson()
+                    engine.reset()
+                    current_prediction = None
+                    current_confidence = 0.0
                 elif key in (ord("p"), ord("P")):
                     tutor.prev_lesson()
+                    engine.reset()
+                    current_prediction = None
+                    current_confidence = 0.0
                 elif key in (ord("r"), ord("R")):
                     tutor.reset_to_demo()
+                    engine.reset()
+                    current_prediction = None
+                    current_confidence = 0.0
                 elif key in (ord("s"), ord("S")):
                     tutor.slow_motion = not tutor.slow_motion
                 elif key == 32:  # Barra espaciadora: saltar demo
                     if tutor.enabled:
                         tutor.skip_demo()
+                        engine.reset()
+                        current_prediction = None
+                        current_confidence = 0.0
 
     except KeyboardInterrupt:
         pass
