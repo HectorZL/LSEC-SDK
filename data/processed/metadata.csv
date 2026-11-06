@@ -1,4 +1,19 @@
 sequence_id,label,num_frames,fps,width,height,npy_path,pose_mean_conf,face_mean_conf,lh_mean_conf,rh_mean_conf
-dwpose_023_como_te_sientes,CÓMO TE SIENTES,112,29.97002997002997,1280,720,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_023_como_te_sientes.npy,0.58877032995224,0.956768274307251,0.751879096031189,0.8272631168365479
-dwpose_044_donde_estudio,DÓNDE ESTUDIÓ,124,29.973410684070583,1280,720,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_044_donde_estudio.npy,0.5814175605773926,0.9547927975654602,0.7334494590759277,0.7635980844497681
-dwpose_reposo_baseline,REPOSO,28,30.0,1280,720,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_reposo_baseline.npy,0.5740863680839539,0.955839991569519,0.07612916082143784,0.07276783138513565
+dwpose_buenos-dias,Buenos días,85,25.0,640,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_buenos-dias.npy,0.5879271030426025,0.9384064078330994,0.7198874354362488,0.6627896428108215
+dwpose_buenas-tardes,Buenas tardes,98,25.0,640,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_buenas-tardes.npy,0.579641580581665,0.9408912658691406,0.6281439065933228,0.6951574087142944
+dwpose_buenas-noches,Buenas noches,102,25.0,640,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_buenas-noches.npy,0.5919392704963684,0.9413058757781982,0.690495491027832,0.6609836220741272
+dwpose_como-esta,¿Cómo está?,152,25.0,482,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_como-esta.npy,0.5885426998138428,0.9639949202537537,0.507511556148529,0.7765154242515564
+dwpose_como-te-sientes,CÓMO TE SIENTES,112,29.97002997002997,1280,720,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_como-te-sientes.npy,0.5887752175331116,0.9567761421203613,0.7519605755805969,0.8272989392280579
+dwpose_esta-bien,¿Está bien?,82,25.0,640,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_esta-bien.npy,0.5836396217346191,0.9661168456077576,0.7719948887825012,0.8320090174674988
+dwpose_de-nada,De nada,110,25.0,484,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_de-nada.npy,0.5780160427093506,0.9507259726524353,0.6439788937568665,0.7201250195503235
+dwpose_un-momento-por-favor,Un momento por favor,102,25.0,640,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_un-momento-por-favor.npy,0.5902926921844482,0.9594336152076721,0.7896552681922913,0.857729971408844
+dwpose_adios,Adiós,150,25.0,490,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_adios.npy,0.5811821818351746,0.9495729207992554,0.5136290788650513,0.7089036107063293
+dwpose_hace-tiempo-que-no-te-veo,Hace tiempo que no te veo,120,25.0,484,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_hace-tiempo-que-no-te-veo.npy,0.5755813121795654,0.9227069020271301,0.33340713381767273,0.6594935655593872
+dwpose_hambre,Hambre,105,25.0,484,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_hambre.npy,0.5868386030197144,0.9519155025482178,0.7109407186508179,0.7112118601799011
+dwpose_agua,Agua,115,25.0,490,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_agua.npy,0.5967987775802612,0.9518371224403381,0.7420135140419006,0.7087308168411255
+dwpose_ya-no-mas,Ya no más,102,25.0,484,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_ya-no-mas.npy,0.5777266025543213,0.9550210237503052,0.40705984830856323,0.7191563844680786
+dwpose_mal,Mal,88,25.0,484,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_mal.npy,0.5956241488456726,0.9647979140281677,0.7185211777687073,0.8010069131851196
+dwpose_donde-estudio,DÓNDE ESTUDIÓ,124,29.973410684070583,1280,720,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_donde-estudio.npy,0.5814282298088074,0.9548014402389526,0.7334268689155579,0.7635871171951294
+dwpose_donde,¿Dónde?,83,15.0,482,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_donde.npy,0.5971745848655701,0.9675794839859009,0.7573508024215698,0.7769904732704163
+dwpose_en-que-le-puedo-ayudar,¿En qué le puedo ayudar?,104,25.0,640,360,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_en-que-le-puedo-ayudar.npy,0.5832099914550781,0.9609674215316772,0.7049595713615417,0.7521483898162842
+dwpose_reposo_baseline,REPOSO,28,25.0,1280,720,C:\Users\jesuc\Documents\SDK\data\processed\sequences\dwpose_reposo_baseline.npy,0.5962501764297485,0.9508232474327087,0.0681951493024826,0.07040157914161682
