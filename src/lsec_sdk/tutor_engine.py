@@ -408,8 +408,8 @@ class LSECTutorEngine:
 
         # Footer controls
         cv2.rectangle(frame, (x1, y2 - 45), (x2, y2), (22, 26, 36), -1)
-        footer_txt = "[1-6]: Seccion | [W/S]: Mover | [ENTER]: Practicar | [TAB]: Pagina | [M]: Cerrar"
-        cv2.putText(frame, footer_txt, (x1 + 20, y2 - 16), cv2.FONT_HERSHEY_SIMPLEX, 0.52, (180, 210, 225), 1)
+        footer_txt = "[1-6]: Seccion | [W/S o Flechas]: Mover | [ENTER]: Practicar | [A/D]: Pagina | [M]: Cerrar"
+        cv2.putText(frame, footer_txt, (x1 + 20, y2 - 16), cv2.FONT_HERSHEY_SIMPLEX, 0.50, (180, 210, 225), 1)
 
         return frame
 

@@ -243,14 +243,16 @@ def main():
             elif tutor.enabled and tutor.menu_open:
                 from lsec_sdk.tutor_engine import SECTIONS_LIST
                 # Menu navigation keys
-                if raw_key in (13, 10):  # Enter to select sign
+                if raw_key in (13, 10) or key in (13, 10, 32):  # Enter or Space to select sign
                     tutor.menu_select()
                     print(f">> Seña elegida: {tutor.current_lesson.clean_label if tutor.current_lesson else ''}")
-                elif raw_key in (2490368, ord("w"), ord("W")):  # Up arrow or W
+                elif raw_key in (2490368, 38) or key in (ord("w"), ord("W")):  # Up arrow or W
                     tutor.menu_up()
-                elif raw_key in (2621440, ord("s"), ord("S")):  # Down arrow or S
+                elif raw_key in (2621440, 40) or key in (ord("s"), ord("S")):  # Down arrow or S
                     tutor.menu_down()
-                elif raw_key in (9, ord("\t")):  # Tab to cycle page
+                elif raw_key in (2424832, 37) or key in (ord("a"), ord("A")):  # Left arrow or A
+                    tutor.menu_prev_page()
+                elif raw_key in (2555904, 39, 9, ord("\t")) or key in (ord("d"), ord("D"), 9):  # Right arrow, D or Tab
                     tutor.menu_next_page()
                 elif key in (ord("c"), ord("C")):  # Cycle category section
                     sec = tutor.cycle_section()

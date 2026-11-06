@@ -186,26 +186,85 @@ def main():
 
             cv2.imshow(window_name, display_frame)
 
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord("q") or key == 27:
-                break
-            elif key == ord("t") or key == ord("T"):
-                tutor.enabled = not tutor.enabled
-            elif key == ord("m") or key == ord("M"):
-                tutor.toggle_menu()
-            elif key == ord("c") or key == ord("C"):
-                tutor.cycle_section()
-            elif key == ord("n") or key == ord("N"):
-                tutor.next_lesson()
-            elif key == ord("p") or key == ord("P"):
-                tutor.prev_lesson()
-            elif key == ord("r") or key == ord("R"):
-                tutor.reset_to_demo()
-            elif key == ord("s") or key == ord("S"):
-                tutor.slow_motion = not tutor.slow_motion
-            elif key == 32:  # Barra espaciadora: saltar demo
-                if tutor.enabled:
-                    tutor.skip_demo()
+            raw_key = cv2.waitKeyEx(1)
+            key = raw_key & 0xFF if raw_key != -1 else -1
+
+            if key in (ord("q"), ord("Q")):
+                if tutor.enabled and tutor.menu_open:
+                    tutor.toggle_menu()
+                else:
+                    break
+            elif raw_key == 27:  # ESC
+                if tutor.enabled and tutor.menu_open:
+                    tutor.toggle_menu()
+                else:
+                    break
+
+            # -------------------------------------------------------------
+            # Navegación del Menú en Pantalla (cuando está abierto)
+            # -------------------------------------------------------------
+            elif tutor.enabled and tutor.menu_open:
+                from lsec_sdk.tutor_engine import SECTIONS_LIST
+
+                # Confirmar selección: ENTER o ESPACIO
+                if raw_key in (13, 10) or key in (13, 10, 32):
+                    tutor.menu_select()
+                    print(f">> Seña elegida: {tutor.current_lesson.clean_label if tutor.current_lesson else ''}")
+
+                # Subir en la lista: 'W', 'w' o Flecha Arriba
+                elif raw_key in (2490368, 38) or key in (ord("w"), ord("W")):
+                    tutor.menu_up()
+
+                # Bajar en la lista: 'S', 's' o Flecha Abajo
+                elif raw_key in (2621440, 40) or key in (ord("s"), ord("S")):
+                    tutor.menu_down()
+
+                # Página anterior: 'A', 'a' o Flecha Izquierda
+                elif raw_key in (2424832, 37) or key in (ord("a"), ord("A")):
+                    tutor.menu_prev_page()
+
+                # Página siguiente: 'D', 'd', Flecha Derecha o TAB
+                elif raw_key in (2555904, 39, 9, ord("\t")) or key in (ord("d"), ord("D"), 9):
+                    tutor.menu_next_page()
+
+                # Cambiar de sección con 'C'
+                elif key in (ord("c"), ord("C")):
+                    sec = tutor.cycle_section()
+                    print(f">> Sección cambiada a: {sec}")
+
+                # Cerrar menú con 'M'
+                elif key in (ord("m"), ord("M")):
+                    tutor.toggle_menu()
+
+                # Saltar a sección directa 1 a 6
+                elif ord("1") <= key <= ord("6"):
+                    sec_idx = key - ord("1")
+                    if sec_idx < len(SECTIONS_LIST):
+                        chosen_sec = SECTIONS_LIST[sec_idx]
+                        tutor.set_section(chosen_sec)
+                        print(f">> Pestaña: {chosen_sec} ({len(tutor.filtered_lessons)} señas)")
+
+            # -------------------------------------------------------------
+            # Controles normales (cuando el Menú está cerrado)
+            # -------------------------------------------------------------
+            else:
+                if key in (ord("t"), ord("T")):
+                    tutor.enabled = not tutor.enabled
+                elif key in (ord("m"), ord("M")):
+                    tutor.toggle_menu()
+                elif key in (ord("c"), ord("C")):
+                    tutor.cycle_section()
+                elif key in (ord("n"), ord("N")):
+                    tutor.next_lesson()
+                elif key in (ord("p"), ord("P")):
+                    tutor.prev_lesson()
+                elif key in (ord("r"), ord("R")):
+                    tutor.reset_to_demo()
+                elif key in (ord("s"), ord("S")):
+                    tutor.slow_motion = not tutor.slow_motion
+                elif key == 32:  # Barra espaciadora: saltar demo
+                    if tutor.enabled:
+                        tutor.skip_demo()
 
     except KeyboardInterrupt:
         pass
