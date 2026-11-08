@@ -168,3 +168,4 @@ class SignActivityDetector:
             return ActivityState.ACTIVE, None
 
         return self.state, None
+

@@ -97,7 +97,7 @@ class DWPoseDetector:
         if self.enable_facemesh:
             try:
                 self.face_mesh = mp.solutions.face_mesh.FaceMesh(
-                    max_num_faces=1,
+                    max_num_faces=3,
                     refine_landmarks=True,
                     min_detection_confidence=0.30,
                     min_tracking_confidence=0.30,
@@ -246,19 +246,58 @@ class DWPoseDetector:
 
         kpts, scores = self._decode_simcc(simcc_x, simcc_y, center, scale)
 
-        # Update FaceMesh landmarks on RGB frame with persistence cache across hand occlusions
+        # Update FaceMesh landmarks on RGB frame with spatial anchor validation
+        # Ensures FaceMesh attaches ONLY to the user's head, rejecting ghost faces on chairs, logos or background
         if self.enable_facemesh and self.face_mesh is not None:
             try:
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 fm_out = self.face_mesh.process(rgb)
+                valid_face = None
+
                 if fm_out and fm_out.multi_face_landmarks:
-                    self.face_mesh_cache = fm_out.multi_face_landmarks[0]
-                    self.face_mesh_cache_ttl = 8  # Retain for up to 8 frames (~0.3s) during fast hand passes
-                    self.last_face_mesh_landmarks = self.face_mesh_cache
+                    h, w = frame.shape[:2]
+                    ref_pt = None
+
+                    # Use DWPose nose (0) or shoulder midpoint (5, 6) as anatomical anchor
+                    if len(scores) > 0 and scores[0] > 0.15:
+                        ref_pt = np.array([kpts[0, 0], kpts[0, 1]])
+                    elif len(scores) > 6 and (scores[5] > 0.15 and scores[6] > 0.15):
+                        ref_pt = np.array([(kpts[5, 0] + kpts[6, 0]) / 2.0, min(kpts[5, 1], kpts[6, 1]) - 80])
+
+                    max_allowed_dist = 180.0
+                    if len(scores) > 6 and scores[5] > 0.15 and scores[6] > 0.15:
+                        shoulder_dist = float(np.linalg.norm(kpts[5] - kpts[6]))
+                        max_allowed_dist = max(110.0, shoulder_dist * 0.90)
+
+                    if ref_pt is not None:
+                        best_face = None
+                        min_dist = float('inf')
+
+                        for candidate_face in fm_out.multi_face_landmarks:
+                            lms = candidate_face.landmark
+                            c_x = (lms[1].x + lms[4].x + lms[168].x) / 3.0 * w
+                            c_y = (lms[1].y + lms[4].y + lms[168].y) / 3.0 * h
+                            dist = float(np.linalg.norm(ref_pt - np.array([c_x, c_y])))
+
+                            if dist < min_dist:
+                                min_dist = dist
+                                best_face = candidate_face
+
+                        # Only accept face if it aligns with the user's physical head (not a chair or poster)
+                        if min_dist <= max_allowed_dist:
+                            valid_face = best_face
+                    else:
+                        valid_face = fm_out.multi_face_landmarks[0]
+
+                if valid_face is not None:
+                    self.face_mesh_cache = valid_face
+                    self.face_mesh_cache_ttl = 8
+                    self.last_face_mesh_landmarks = valid_face
                 elif self.face_mesh_cache_ttl > 0:
                     self.face_mesh_cache_ttl -= 1
                     self.last_face_mesh_landmarks = self.face_mesh_cache
                 else:
+                    self.face_mesh_cache = None
                     self.last_face_mesh_landmarks = None
             except Exception:
                 self.last_face_mesh_landmarks = None

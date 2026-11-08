@@ -83,7 +83,7 @@ class LiveInferenceEngine:
         self.frame_counter: int = 0
         self.last_emitted_sign: Optional[str] = None
         self.last_emitted_frame: int = -999
-        self.cooldown_frames: int = 25  # ~1.0 second before emitting a different sign
+        self.cooldown_frames: int = 35  # ~1.2s before emitting a different sign
 
         # Fast lookup cache for clean target label to index
         self._target_index_cache: Dict[str, Optional[int]] = {}
@@ -154,15 +154,23 @@ class LiveInferenceEngine:
         r_elevated = bool(np.min(rw_y) < 0.82 and np.mean(rw_c) > 0.15)
         l_elevated = bool(np.min(lw_y) < 0.82 and np.mean(lw_c) > 0.15)
 
-        # Check motion velocity in hands over the recent window
+        # Check motion velocity and spatial trajectory displacement
         rh_diff = np.diff(seq_arr[-n_check:, 116:137, :2], axis=0) if len(seq_arr) >= n_check else np.zeros((1, 21, 2))
         lh_diff = np.diff(seq_arr[-n_check:, 95:116, :2], axis=0) if len(seq_arr) >= n_check else np.zeros((1, 21, 2))
         rh_motion = float(np.mean(np.abs(rh_diff))) if len(rh_diff) > 0 else 0.0
         lh_motion = float(np.mean(np.abs(lh_diff))) if len(lh_diff) > 0 else 0.0
         active_motion = max(rh_motion, lh_motion)
 
-        # If both wrists are in resting position (lap/table) or motionless:
-        if not (r_elevated or l_elevated) or active_motion < 0.0030:
+        # Spatial trajectory displacement (filters out static hand holds on chest or face)
+        n_span = min(18, len(seq_arr))
+        rw_span = float(np.linalg.norm(np.ptp(seq_arr[-n_span:, 4, :2], axis=0))) if n_span >= 8 else 0.0
+        lw_span = float(np.linalg.norm(np.ptp(seq_arr[-n_span:, 7, :2], axis=0))) if n_span >= 8 else 0.0
+        rh_span = float(np.mean(np.ptp(seq_arr[-n_span:, 116:137, :2], axis=0))) if n_span >= 8 else 0.0
+        lh_span = float(np.mean(np.ptp(seq_arr[-n_span:, 95:116, :2], axis=0))) if n_span >= 8 else 0.0
+        dynamic_movement = max(rw_span, lw_span, rh_span, lh_span)
+
+        # If both wrists are in resting position or motionless in place:
+        if not (r_elevated or l_elevated) or active_motion < 0.0035 or dynamic_movement < 0.038:
             return 0.0
 
         max_prob = 0.0
@@ -219,8 +227,16 @@ class LiveInferenceEngine:
         lh_motion = float(np.mean(np.abs(lh_diff))) if len(lh_diff) > 0 else 0.0
         active_motion = max(rh_motion, lh_motion)
 
-        if not (r_elevated or l_elevated) or active_motion < 0.0030:
-            # Hands are resting down or motionless: clear prediction state and emit silence
+        # Spatial trajectory displacement (distinguishes dynamic gesture stroke from static hand hold)
+        n_span = min(18, len(seq_arr))
+        rw_span = float(np.linalg.norm(np.ptp(seq_arr[-n_span:, 4, :2], axis=0))) if n_span >= 8 else 0.0
+        lw_span = float(np.linalg.norm(np.ptp(seq_arr[-n_span:, 7, :2], axis=0))) if n_span >= 8 else 0.0
+        rh_span = float(np.mean(np.ptp(seq_arr[-n_span:, 116:137, :2], axis=0))) if n_span >= 8 else 0.0
+        lh_span = float(np.mean(np.ptp(seq_arr[-n_span:, 95:116, :2], axis=0))) if n_span >= 8 else 0.0
+        dynamic_movement = max(rw_span, lw_span, rh_span, lh_span)
+
+        if not (r_elevated or l_elevated) or active_motion < 0.0035 or dynamic_movement < 0.038:
+            # Hands are resting down or held in a static position without gesture dynamics: emit silence
             self.last_emitted_sign = None
             self.last_stable_prediction = None
             self.prediction_history.clear()
