@@ -4,6 +4,7 @@ LSEC SDK - Real-Time Sign Translator & Tutor powered by DWPose (GPU Acceleration
 Runs whole-body and high-fidelity hand tracking via NVIDIA RTX 3060 (CUDA).
 """
 
+import argparse
 from collections import deque
 from pathlib import Path
 import sys
@@ -21,6 +22,10 @@ from lsec_sdk.tutor_engine import LSECTutorEngine, TutorState, clean_ascii
 
 
 def main():
+    parser = argparse.ArgumentParser(description="LSEC SDK - Traductor y Tutor en Vivo con DWPose (NVIDIA GPU)")
+    parser.add_argument("--libre", "--free", action="store_true", help="Iniciar directamente en Modo Libre (traduccion continua sin tutor)")
+    args = parser.parse_args()
+
     print("=" * 65)
     print(" LSEC SDK - TRADUCTOR Y TUTOR EN VIVO CON DWPOSE (NVIDIA GPU)")
     print("=" * 65)
@@ -47,7 +52,7 @@ def main():
     print(f"Vocabulario activo ({len(engine.label_encoder.label_to_idx)} señas): {list(engine.label_encoder.label_to_idx.keys())}")
 
     # Initialize Tutor Engine
-    tutor = LSECTutorEngine(enabled=True)
+    tutor = LSECTutorEngine(enabled=not args.libre)
     if tutor.lessons:
         tutor.set_section("TODAS")
 
@@ -69,18 +74,20 @@ def main():
     current_prediction = ""
     current_confidence = 0.0
     last_detection_time = 0.0
+    sign_history: deque[str] = deque(maxlen=4)
 
     fps_time = time.time()
     fps_counter = 0
     current_fps = 0.0
 
     print("\n>> Sistema DWPose activo en tiempo real.")
+    print("   [T]: Alternar Modo Libre / Modo Tutor (Prueba señas libres una tras otra)")
     print("   [M]: Abrir / Cerrar Menú de Señas en Pantalla")
-    print("   [T]: Habilitar / Deshabilitar Modo Tutor")
     print("   [C]: Cambiar Sección Temática")
     print("   [N]: Siguiente seña | [P]: Seña anterior")
     print("   [ESPACIO]: Saltar demostración de palitos")
-    print("   [Q]: Salir\n")
+    print("   [Q]: Salir")
+    print(f">> Modo inicial: {'MODO LIBRE (Traductor Continuo)' if not tutor.enabled else 'MODO TUTOR (Guiado)'}\n")
 
     try:
         retry_count = 0
@@ -120,6 +127,9 @@ def main():
             if pred_label is not None and pred_label != "REPOSO":
                 if pred_label != current_prediction:
                     print(f">> [DWPose - NUEVA SEÑA]: {pred_label} ({pred_conf * 100:.1f}%)")
+                    clean_pred = clean_ascii(pred_label)
+                    if not sign_history or sign_history[-1] != clean_pred:
+                        sign_history.append(clean_pred)
                 current_prediction = pred_label
                 current_confidence = pred_conf
                 last_detection_time = time.time()
@@ -152,48 +162,66 @@ def main():
                 cv2.putText(display_frame, f"GPU: DWPose (CUDA) + CPU FaceMesh | FPS: {current_fps:4.1f}", (w - 440, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 120), 1)
             else:
                 # Top bar HUD for free translator
-                cv2.rectangle(display_frame, (0, 0), (w, 55), (15, 15, 15), -1)
-                cv2.putText(display_frame, f"FPS: {current_fps:4.1f} (DWPose CUDA + FaceMesh)", (20, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 120), 2)
-                cv2.putText(display_frame, "[T]: Modo Tutor | [M]: Menu | [Q]: Salir", (w - 380, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 220, 255), 1)
+                cv2.rectangle(display_frame, (0, 0), (w, 48), (14, 18, 26), -1)
+                cv2.line(display_frame, (0, 48), (w, 48), (0, 220, 255), 1)
+                cv2.putText(display_frame, f"LSEC AI - MODO LIBRE CONTINUO | FPS: {current_fps:4.1f} (DWPose GPU)", (20, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.60, (0, 255, 120), 2)
+                cv2.putText(display_frame, "[T]: Activar Modo Tutor | [M]: Catalogo | [Q]: Salir", (w - 470, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.52, (0, 220, 255), 1)
 
-                is_active = (time.time() - last_detection_time) < 2.0
-                banner_h = 90
+                is_active = (time.time() - last_detection_time) < 2.5
+                banner_h = 100
                 overlay = display_frame.copy()
-                cv2.rectangle(overlay, (0, h - banner_h), (w, h), (15, 25, 15) if is_active else (20, 20, 20), -1)
-                display_frame = cv2.addWeighted(overlay, 0.85, display_frame, 0.15, 0)
+                bg_color = (16, 28, 20) if (is_active and current_prediction) else (18, 20, 26)
+                cv2.rectangle(overlay, (0, h - banner_h), (w, h), bg_color, -1)
+                display_frame = cv2.addWeighted(overlay, 0.88, display_frame, 0.12, 0)
+                border_color = (0, 255, 120) if (is_active and current_prediction) else (60, 70, 85)
+                cv2.line(display_frame, (0, h - banner_h), (w, h - banner_h), border_color, 2)
 
+                # Line 1: Main prediction readout
                 if is_active and current_prediction:
                     cv2.putText(
                         display_frame,
-                        f"TRADUCCION: {clean_ascii(current_prediction)}",
-                        (30, h - 45),
+                        f">> TRADUCCION: {clean_ascii(current_prediction).upper()}",
+                        (25, h - 58),
                         cv2.FONT_HERSHEY_SIMPLEX,
-                        1.0,
+                        0.92,
                         (0, 255, 120),
                         2,
                         cv2.LINE_AA,
                     )
                     cv2.putText(
                         display_frame,
-                        f"Confianza: {current_confidence * 100:.1f}%",
-                        (w - 240, h - 45),
+                        f"Precision: {current_confidence * 100:.1f}%",
+                        (w - 240, h - 58),
                         cv2.FONT_HERSHEY_SIMPLEX,
-                        0.75,
-                        (200, 255, 200),
+                        0.72,
+                        (0, 240, 255),
                         2,
                         cv2.LINE_AA,
                     )
                 else:
                     cv2.putText(
                         display_frame,
-                        "DWPose listo. Haz una seña frente a la cámara...",
-                        (30, h - 45),
+                        "[LISTO] Realiza cualquier sena en vivo... (Traduccion libre una tras otra)",
+                        (25, h - 58),
                         cv2.FONT_HERSHEY_SIMPLEX,
-                        0.75,
-                        (180, 180, 180),
-                        2,
+                        0.68,
+                        (200, 215, 230),
+                        1,
                         cv2.LINE_AA,
                     )
+
+                # Line 2: Multi-sign continuous sequence ribbon
+                hist_str = " -> ".join(list(sign_history)[-4:]) if sign_history else "(esperando primera sena...)"
+                cv2.putText(
+                    display_frame,
+                    f"Historial continuo: {hist_str}",
+                    (25, h - 20),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.55,
+                    (255, 200, 80),
+                    1,
+                    cv2.LINE_AA,
+                )
 
             cv2.imshow(window_name, display_frame)
 
@@ -264,6 +292,10 @@ def main():
             else:
                 if key in (ord("t"), ord("T")):
                     tutor.enabled = not tutor.enabled
+                    engine.reset()
+                    current_prediction = ""
+                    current_confidence = 0.0
+                    print(f"\n>> Modo cambiado a: {'MODO TUTOR (Guiado con Lecciones)' if tutor.enabled else 'MODO LIBRE (Traductor Continuo de Señas)'}")
                 elif key in (ord("m"), ord("M")):
                     tutor.toggle_menu()
                 elif key in (ord("c"), ord("C")):

@@ -291,8 +291,8 @@ class LiveInferenceEngine:
             # Strict stability condition: at least 7 consistent frames out of 10
             if count >= 7:
                 time_since_last = self.frame_counter - self.last_emitted_frame
-                # Allow re-affirming same sign or emitting new sign after cooldown period
-                if candidate == self.last_emitted_sign or time_since_last >= self.cooldown_frames:
+                # Allow re-affirming same sign, immediate emission after rest (self.last_emitted_sign is None), or after cooldown
+                if candidate == self.last_emitted_sign or self.last_emitted_sign is None or time_since_last >= self.cooldown_frames:
                     self.last_emitted_sign = candidate
                     self.last_emitted_frame = self.frame_counter
                     self.last_stable_prediction = candidate
