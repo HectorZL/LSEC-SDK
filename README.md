@@ -1,63 +1,98 @@
-# LSEC SDK - Sign Language Processing, Feature Extraction & Classification
+# LSEC SDK - Sign Language Processing, Whole-Body Estimation & Guided Tutor
 
-SDK en Python para el procesamiento, normalización, entrenamiento y traducción en tiempo real de Lengua de Señas Ecuatoriana (LSEC) y datasets universales (How2Sign / OpenPose / MediaPipe).
+SDK en Python y PyTorch acelerado por GPU (NVIDIA CUDA) para la extracción de características articulatorias, entrenamiento y traducción interactiva en tiempo real de la **Lengua de Señas Ecuatoriana (LSEC)** basada en el estándar oficial del **CONADIS Ecuador**.
 
 ---
 
-## 📁 Estructura del SDK
+## 🌟 Características Principales
+
+1. **Estimación Postural DWPose Whole-Body (CUDA GPU):**
+   * Extracción holística en tiempo real de **133 keypoints** (cuerpo COCO, rostro denso de 68 puntos y ambas manos de 21 puntos).
+   * Robusto frente a cruce de manos, oclusiones y movimientos rápidos (30-45 FPS en GPU NVIDIA RTX 3060).
+
+2. **Catálogo Canónico Oficial CONADIS Ecuador (17 Señas):**
+   * **Saludos y Cortesía (7):** *Buenos días, Buenas tardes, Buenas noches, Adiós, De nada, Un momento por favor, Hace tiempo que no te veo.*
+   * **Trabajo y Trámites (2):** *DÓNDE ESTUDIÓ, ¿En qué le puedo ayudar?*
+   * **Comida y Rutina (3):** *Hambre, Agua, Ya no más.*
+   * **Salud y Estado (4):** *CÓMO TE SIENTES, ¿Cómo está?, ¿Está bien?, Mal.*
+   * **General (1):** *¿Dónde?*
+
+3. **Modo Tutor y Aprendizaje Guiado con Modelo de Palitos (PiP):**
+   * Animación en bucle del profesor virtual en tiempo real (PiP).
+   * Máquina de estados desacoplada: **Demostración** $\rightarrow$ **Cuenta Regresiva** $\rightarrow$ **Práctica activa**.
+   * Barra de progreso interactiva en pantalla con requisito de racha sostenida para evitar disparos prematuros.
+   * Menú interactivo en pantalla con selección por teclado (`W/S`, `Flechas`, `1-6`, `ENTER`, `TAB`, `M`, `C`).
+
+4. **Compuerta Cinemática Anti Falsos Positivos:**
+   * Detección estricta de elevación de muñecas en el espacio de señas ($Y < 0.82$) y velocidad cinética ($\Delta > 0.0030$).
+   * Silencio absoluto en reposo (**0 falsos positivos** cuando el usuario está sentado con las manos abajo).
+
+5. **Clasificador BiLSTM + Temporal Attention:**
+   * Entrada de 411 dimensiones ($137 \times 3$).
+   * BiLSTM de 2 capas con 128 unidades ocultas y mecanismo de atención temporal para ponderar el punto clave articulatorio.
+   * 100.0% de cobertura y precisión en validación experimental.
+
+---
+
+## 📁 Estructura del Proyecto
 
 ```text
 SDK/
-├── lsec_sdk/                     # Módulo principal del SDK
-│   ├── feature_provider.py       # Extracción de JSON (How2Sign) y Video MP4 (LSEC)
-│   ├── realtime_capture.py       # Captura de webcam con MediaPipe Holistic (~30 FPS)
-│   ├── visualizer.py             # Renderizado de esqueletos y animaciones comparativas
-│   ├── constants.py              # Definición de keypoints (BODY_25, Face, Hands)
-│   └── models/                   # Módulo de Inteligencia Artificial (PyTorch + CUDA)
-│       ├── lstm_classifier.py    # Red BiLSTM con Mecanismo de Atención Temporal
-│       ├── dataset.py            # Dataset de secuencias, aumento de datos e interpolación
-│       ├── trainer.py            # Optimizador y entrenamiento acelerado por GPU
-│       └── inference.py          # Motor de inferencia en ventana deslizante en vivo
-├── tests/                        # 13 pruebas automatizadas (100% pasando)
-├── data/processed/
-│   ├── sequences/                # Tensores NumPy (.npy) extraídos
-│   ├── metadata.csv              # Base de datos de secuencias y métricas
-│   └── visualizations/           # GIFs y fotos de validación
-├── models/checkpoints/           # Pesos del modelo entrenado (.pt)
-├── record_dataset.py             # Asistente interactivo para grabar nuevas señas
-├── train_classifier.py           # Script para entrenar el modelo en tu GPU RTX 3060
-├── run_live_translator.py        # Traductor en vivo desde tu webcam
-└── run_webcam.py                 # Visualizador y grabador en vivo
+├── docs/
+│   └── Informe_Tecnico_Tesis_LSEC_DWPose.docx   # Informe técnico formal para la tesis
+├── lsec_sdk/                                     # Módulo principal del SDK
+│   ├── dwpose_extractor.py                       # Extractor DWPose Whole-Body ONNX/CUDA
+│   ├── tutor_engine.py                           # Máquina de estados pedagógica y menú HUD
+│   ├── visualizer.py                             # Renderizado de esqueletos y animaciones
+│   ├── constants.py                              # Definición de topologías y slices
+│   └── models/                                   # Arquitecturas PyTorch
+│       ├── lstm_classifier.py                    # Red BiLSTM con Atención Temporal
+│       ├── dataset.py                            # Dataset balanceado y aumento temporal
+│       ├── trainer.py                            # Optimizador y entrenamiento GPU
+│       └── inference.py                          # Inferencia deslizante con filtro cinemático
+├── data/
+│   ├── conadis_videos/                           # Videos de referencia oficiales CONADIS
+│   └── processed/
+│       ├── sequences/                            # Tensores NumPy (.npy) extraídos
+│       └── metadata.csv                          # Base de datos de secuencias
+├── models/checkpoints/
+│   └── lsec_classifier.pt                        # Pesos del modelo entrenado
+├── run_dwpose_translator.py                      # Traductor y Tutor en vivo GPU (DWPose)
+├── train_conversational_pack.py                  # Pipeline de entrenamiento balanceado GPU
+├── pyproject.toml                                # Especificación del paquete
+└── tests/                                        # Suite de pruebas unitarias
 ```
 
 ---
 
-## 🚀 Flujo de Trabajo Rápido
+## 🚀 Inicio Rápido
 
-### 1. Grabar nuevas señas con tu cámara
+### 1. Iniciar el Traductor y Tutor en Vivo (DWPose GPU)
 ```powershell
-python record_dataset.py "HOLA"
-```
-*(O ejecuta con doble clic el archivo `grabar_senas.bat`)*
-
-### 2. Entrenar el clasificador de IA en tu GPU
-```powershell
-python train_classifier.py --epochs 25
+python run_dwpose_translator.py
 ```
 
-### 3. Abrir el traductor en tiempo real
-```powershell
-python run_live_translator.py
-```
-*(O ejecuta con doble clic el archivo `iniciar_traductor.bat`)*
-El sistema rastreará tus manos y rostro en vivo y mostrará un banner verde con la seña detectada y el porcentaje de confianza.
+* **[M]:** Abrir/Cerrar el Catálogo y Menú en pantalla.
+* **[W / S o Flechas]:** Navegar entre señas de la lección.
+* **[1 - 6]:** Cambiar de módulo temático (Saludos, Trabajo, Comida, Salud, General, Todas).
+* **[ENTER o ESPACIO]:** Seleccionar la seña para practicar.
+* **[ESPACIO]:** Saltar demostración e ir directo a imitar.
+* **[T]:** Alternar entre modo Tutor y modo Traductor Libre.
+* **[Q]:** Salir de la aplicación.
 
-### 4. Extraer características de videos existentes
+### 2. Reentrenar el Modelo Balanceado en GPU
 ```powershell
-python extract_lsec_video.py
+python train_conversational_pack.py
 ```
 
-### 5. Correr la suite de pruebas
+### 3. Ejecutar las Pruebas Unitarias
 ```powershell
 python -m pytest tests/ -v
 ```
+
+---
+
+## 📄 Documentación Académica
+
+El informe técnico detallado para la defensa y reuniones de tesis se encuentra disponible en:
+* [`docs/Informe_Tecnico_Tesis_LSEC_DWPose.docx`](docs/Informe_Tecnico_Tesis_LSEC_DWPose.docx)
