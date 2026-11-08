@@ -80,10 +80,18 @@ def main():
     print("   [Q]: Salir\n")
 
     try:
+        retry_count = 0
         while True:
             ret, frame = cap.read()
             if not ret:
+                retry_count += 1
+                if retry_count < 15:
+                    time.sleep(0.1)
+                    continue
+                print("\n[AVISO] No se reciben fotogramas de la cámara web.")
+                print(">> Asegúrate de CERRAR la pestaña del navegador o cualquier otra app que esté usando la cámara.\n")
                 break
+            retry_count = 0
             frame = cv2.flip(frame, 1)
 
             # 1. Run GPU DWPose inference
