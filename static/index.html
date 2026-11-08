@@ -96,16 +96,24 @@
 
                 <!-- Live Metrics & Controls Bar -->
                 <div class="p-4 bg-gray-950/60 border-t border-gray-800 flex flex-wrap items-center justify-between gap-4 text-xs font-mono">
-                    <div class="flex items-center space-x-3">
+                    <div class="flex flex-wrap items-center gap-3">
                         <label class="flex items-center space-x-2 cursor-pointer select-none">
                             <input type="checkbox" id="auto-sad-toggle" checked class="w-4 h-4 rounded text-cyan-600 focus:ring-0 bg-gray-800 border-gray-700">
                             <span class="text-gray-200 font-semibold">Detección Automática (SAD)</span>
                         </label>
                         <span class="text-gray-600">|</span>
                         <div class="flex items-center space-x-2">
-                            <span class="text-gray-400">Energía:</span>
-                            <div class="w-20 bg-gray-800 h-2 rounded-full overflow-hidden">
+                            <span class="text-gray-400">Sensibilidad:</span>
+                            <input type="range" id="sensitivity-slider" min="1.2" max="6.0" step="0.2" value="2.6" class="w-20 accent-cyan-400 cursor-pointer">
+                            <span id="sensitivity-label" class="text-cyan-400 font-bold">1 Mano (Alta)</span>
+                        </div>
+                        <span class="text-gray-600">|</span>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-gray-400">Movimiento:</span>
+                            <div class="w-24 bg-gray-800 h-2.5 rounded-full overflow-hidden relative">
                                 <div id="energy-meter" class="bg-cyan-500 h-full transition-all duration-75" style="width: 0%"></div>
+                                <!-- Threshold indicator line -->
+                                <div id="thresh-line" class="absolute top-0 bottom-0 w-0.5 bg-amber-400" style="left: 20%"></div>
                             </div>
                         </div>
                     </div>
@@ -113,7 +121,7 @@
                     <div class="flex items-center space-x-2">
                         <button id="manual-btn" class="bg-gray-800 hover:bg-gray-700 active:bg-gray-600 text-gray-200 px-3 py-1.5 rounded-lg border border-gray-700 flex items-center space-x-1.5 transition">
                             <span>⏺</span>
-                            <span>Grabar Manual (2.2s)</span>
+                            <span>Forzar Captura (2.2s)</span>
                         </button>
                     </div>
                 </div>
@@ -230,17 +238,38 @@
         const manualBtn = document.getElementById('manual-btn');
         const speakBtn = document.getElementById('speak-btn');
         const clearHistBtn = document.getElementById('clear-hist-btn');
+        const sensitivitySlider = document.getElementById('sensitivity-slider');
+        const sensitivityLabel = document.getElementById('sensitivity-label');
+        const threshLine = document.getElementById('thresh-line');
 
-        // SAD State Machine Variables
+        // SAD State Machine Variables (Tuned for both 1-handed and 2-handed signs)
         let isRecording = false;
         let isProcessing = false;
         let activeFramesBlobs = [];
         let preBufferBlobs = [];
         const MAX_PRE_BUFFER = 10;
         let inactiveStreak = 0;
-        const END_COOLDOWN_FRAMES = 10; // ~330ms of rest to close
-        const MIN_GESTURE_FRAMES = 18;  // ~0.6s minimum
-        const MAX_GESTURE_FRAMES = 90;  // ~3.0s maximum
+        const END_COOLDOWN_FRAMES = 9;   // ~300ms de reposo para cerrar
+        const MIN_GESTURE_FRAMES = 14;   // ~0.45s mínimo (permite señas rápidas de 1 mano)
+        const MAX_GESTURE_FRAMES = 90;   // ~3.0s máximo
+
+        let currentThreshold = 2.6; // Sensibilidad alta predeterminada (1 mano)
+
+        // Actualizar sensibilidad en tiempo real
+        function updateSensitivityUI() {
+            currentThreshold = parseFloat(sensitivitySlider.value);
+            const pct = Math.min(95, Math.max(5, (currentThreshold / 12) * 100));
+            threshLine.style.left = `${pct}%`;
+            if (currentThreshold <= 2.2) {
+                sensitivityLabel.textContent = "Ultra-Alta (Dedos/1 Mano)";
+            } else if (currentThreshold <= 3.4) {
+                sensitivityLabel.textContent = "1 Mano (Recomendada)";
+            } else {
+                sensitivityLabel.textContent = "Media (2 Manos)";
+            }
+        }
+        sensitivitySlider.addEventListener('input', updateSensitivityUI);
+        updateSensitivityUI();
 
         let lastDiffImageData = null;
         let lastPrediction = "";
@@ -298,7 +327,7 @@
             }
         }
 
-        // Calculate motion energy in the signing space quadrant
+        // Calcula energía de movimiento sensible a señas de 1 MANO y 2 MANOS
         function computeMotionEnergy() {
             diffCtx.drawImage(video, 0, 0, 160, 120);
             const currentData = diffCtx.getImageData(0, 0, 160, 120);
@@ -308,31 +337,60 @@
                 return 0;
             }
 
-            let diffSum = 0;
-            let count = 0;
             const cur = currentData.data;
             const prev = lastDiffImageData.data;
 
-            // Analyze only the upper-middle quadrant (Signing Space)
-            // Y from 15% to 80%, X from 15% to 85%
-            const startY = Math.floor(120 * 0.15);
-            const endY = Math.floor(120 * 0.85);
-            const startX = Math.floor(160 * 0.15);
-            const endX = Math.floor(160 * 0.85);
+            // Espacio de señas ampliado: Y desde 8% hasta 90%, X desde 10% hasta 90%
+            const startY = Math.floor(120 * 0.08);
+            const endY = Math.floor(120 * 0.90);
+            const startX = Math.floor(160 * 0.10);
+            const endX = Math.floor(160 * 0.90);
+
+            // Rejilla 4x3 de bloques para capturar movimientos localizados de 1 sola mano (frente, pecho, mentón)
+            const gridR = 4;
+            const gridC = 3;
+            const blockDiffs = new Float32Array(gridR * gridC);
+            const blockCounts = new Int32Array(gridR * gridC);
+            const blockH = (endY - startY) / gridR;
+            const blockW = (endX - startX) / gridC;
+
+            let totalDiff = 0;
+            let totalCount = 0;
 
             for (let y = startY; y < endY; y += 2) {
+                const r = Math.min(gridR - 1, Math.floor((y - startY) / blockH));
                 for (let x = startX; x < endX; x += 2) {
+                    const c = Math.min(gridC - 1, Math.floor((x - startX) / blockW));
+                    const bIdx = r * gridC + c;
+
                     const idx = (y * 160 + x) * 4;
-                    const r = Math.abs(cur[idx] - prev[idx]);
-                    const g = Math.abs(cur[idx+1] - prev[idx+1]);
-                    const b = Math.abs(cur[idx+2] - prev[idx+2]);
-                    diffSum += (r + g + b) / 3;
-                    count++;
+                    const diff = (Math.abs(cur[idx] - prev[idx]) +
+                                  Math.abs(cur[idx+1] - prev[idx+1]) +
+                                  Math.abs(cur[idx+2] - prev[idx+2])) / 3.0;
+
+                    totalDiff += diff;
+                    totalCount++;
+                    blockDiffs[bIdx] += diff;
+                    blockCounts[bIdx]++;
                 }
             }
 
             lastDiffImageData = currentData;
-            return count > 0 ? (diffSum / count) : 0;
+
+            // Obtener el bloque con mayor actividad (donde se mueve la mano activa)
+            let maxBlockDiff = 0;
+            for (let b = 0; b < gridR * gridC; b++) {
+                if (blockCounts[b] > 0) {
+                    const avg = blockDiffs[b] / blockCounts[b];
+                    if (avg > maxBlockDiff) maxBlockDiff = avg;
+                }
+            }
+
+            const globalAvg = totalCount > 0 ? (totalDiff / totalCount) : 0;
+            
+            // Puntuación combinada: 70% peso al bloque más activo (1 mano) + 30% al promedio global
+            const motionScore = (maxBlockDiff * 0.75) + (globalAvg * 0.35);
+            return motionScore;
         }
 
         // Update UI State Badges
@@ -437,17 +495,16 @@
                 // 1. Draw current frame to offscreen canvas
                 offCtx.drawImage(video, 0, 0, 320, 240);
 
-                // 2. Compute motion energy
+                // 2. Compute motion energy (sensitive to 1-hand localized gestures)
                 const energy = computeMotionEnergy();
-                const energyPct = Math.min(100, Math.round((energy / 18) * 100));
+                const energyPct = Math.min(100, Math.round((energy / 12) * 100));
                 energyMeter.style.width = `${energyPct}%`;
 
                 // 3. Convert frame to JPEG Blob
                 offCanvas.toBlob(blob => {
                     if (!blob) return;
 
-                    const THRESHOLD = 7.5; // Motion threshold in signing space
-                    const isActiveMotion = energy > THRESHOLD;
+                    const isActiveMotion = energy >= currentThreshold;
 
                     if (!isRecording) {
                         // In IDLE: maintain rolling pre-buffer
@@ -526,3 +583,4 @@
     </script>
 </body>
 </html>
+
