@@ -6,7 +6,7 @@ delivering robust tracking for hands in side-view / profile angles.
 
 import os
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 import cv2
 import numpy as np
 
@@ -22,6 +22,12 @@ except Exception:
     pass
 
 import onnxruntime as ort
+
+try:
+    import mediapipe as mp
+    HAS_MEDIAPIPE = True
+except ImportError:
+    HAS_MEDIAPIPE = False
 
 from .constants import (
     DEFAULT_FRAME_HEIGHT,
@@ -69,6 +75,7 @@ class DWPoseDetector:
         det_model: Union[str, Path] = "models/dwpose/yolox_l.onnx",
         pose_model: Union[str, Path] = "models/dwpose/dw-ll_ucoco_384.onnx",
         providers: Optional[List[str]] = None,
+        enable_facemesh: bool = True,
     ):
         if providers is None:
             providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
@@ -80,6 +87,22 @@ class DWPoseDetector:
         # Model input dimensions
         self.det_h, self.det_w = 640, 640
         self.pose_h, self.pose_w = 384, 288
+
+        # High-Fidelity Facial Tracking via MediaPipe FaceMesh
+        self.enable_facemesh = enable_facemesh and HAS_MEDIAPIPE
+        self.face_mesh = None
+        self.last_face_mesh_landmarks = None
+        if self.enable_facemesh:
+            try:
+                self.face_mesh = mp.solutions.face_mesh.FaceMesh(
+                    max_num_faces=1,
+                    refine_landmarks=True,
+                    min_detection_confidence=0.35,
+                    min_tracking_confidence=0.35,
+                )
+            except Exception as e:
+                print(f"[DWPoseDetector] MediaPipe FaceMesh no disponible: {e}")
+                self.enable_facemesh = False
 
     def _preprocess_yolox(self, img: np.ndarray) -> Tuple[np.ndarray, float]:
         """Letterbox resizing for YOLOX detector."""
@@ -220,6 +243,18 @@ class DWPoseDetector:
         simcc_y = pose_out[1]
 
         kpts, scores = self._decode_simcc(simcc_x, simcc_y, center, scale)
+
+        # Update FaceMesh landmarks on RGB frame
+        self.last_face_mesh_landmarks = None
+        if self.enable_facemesh and self.face_mesh is not None:
+            try:
+                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                fm_out = self.face_mesh.process(rgb)
+                if fm_out and fm_out.multi_face_landmarks:
+                    self.last_face_mesh_landmarks = fm_out.multi_face_landmarks[0]
+            except Exception:
+                self.last_face_mesh_landmarks = None
+
         return kpts, scores
 
     def extract_lsec_tensor(self, frame: np.ndarray) -> np.ndarray:
@@ -316,12 +351,17 @@ class DWPoseDetector:
 
         return tensor
 
-    def draw_skeleton(self, frame: np.ndarray, kpts: np.ndarray, scores: np.ndarray, thresh: float = 0.25) -> np.ndarray:
-        """Visualizes the 133 DWPose whole-body skeleton with true COCO topology."""
-        # 1. Pose connections (COCO 17 layout)
+    def draw_skeleton(
+        self,
+        frame: np.ndarray,
+        kpts: np.ndarray,
+        scores: np.ndarray,
+        thresh: float = 0.25,
+        face_landmarks: Optional[Any] = None,
+    ) -> np.ndarray:
+        """Visualizes the 133 DWPose whole-body skeleton with true anatomical topology and high-fidelity face tracking."""
+        # 1. Body pose connections (COCO 17 layout - NO lines cutting across eyes/nose)
         body_edges = [
-            (0, 1), (0, 2),        # Nose to Eyes
-            (1, 3), (2, 4),        # Eyes to Ears
             (5, 6),                # Shoulders
             (5, 7), (7, 9),        # Left arm: Shoulder -> Elbow -> Wrist
             (6, 8), (8, 10),       # Right arm: Shoulder -> Elbow -> Wrist
@@ -335,14 +375,82 @@ class DWPoseDetector:
                 if scores[p1] > thresh and scores[p2] > thresh:
                     pt1 = (int(kpts[p1, 0]), int(kpts[p1, 1]))
                     pt2 = (int(kpts[p2, 0]), int(kpts[p2, 1]))
-                    cv2.line(frame, pt1, pt2, (0, 255, 0), 2)
+                    cv2.line(frame, pt1, pt2, (0, 255, 0), 2, cv2.LINE_AA)
 
-        # Draw head / body joints
-        for i in range(min(17, len(kpts))):
+        # Draw anatomical neck line from shoulder midpoint to nose
+        if len(scores) > 6 and scores[5] > thresh and scores[6] > thresh and scores[0] > thresh:
+            neck_pt = (int((kpts[5, 0] + kpts[6, 0]) / 2.0), int((kpts[5, 1] + kpts[6, 1]) / 2.0))
+            cv2.line(frame, neck_pt, (int(kpts[0, 0]), int(kpts[0, 1])), (0, 255, 0), 2, cv2.LINE_AA)
+
+        # Draw body joints (shoulders, elbows, wrists, hips, knees, ankles)
+        for i in range(5, min(17, len(kpts))):
             if scores[i] > thresh:
-                cv2.circle(frame, (int(kpts[i, 0]), int(kpts[i, 1])), 3, (0, 220, 0), -1)
+                cv2.circle(frame, (int(kpts[i, 0]), int(kpts[i, 1])), 3, (0, 220, 0), -1, cv2.LINE_AA)
 
-        # 2. Hand connections
+        # 2. Face: High-Fidelity Facial Visualization (Hybrid FaceMesh or DWPose 68 anatomical contours)
+        fm = face_landmarks if face_landmarks is not None else self.last_face_mesh_landmarks
+        if fm is not None and HAS_MEDIAPIPE:
+            try:
+                mp_drawing = mp.solutions.drawing_utils
+                mp_face_mesh = mp.solutions.face_mesh
+                mp_styles = mp.solutions.drawing_styles
+                mp_drawing.draw_landmarks(
+                    image=frame,
+                    landmark_list=fm,
+                    connections=mp_face_mesh.FACEMESH_CONTOURS,
+                    landmark_drawing_spec=None,
+                    connection_drawing_spec=mp_styles.get_default_face_mesh_contours_style(),
+                )
+                mp_drawing.draw_landmarks(
+                    image=frame,
+                    landmark_list=fm,
+                    connections=mp_face_mesh.FACEMESH_IRISES,
+                    landmark_drawing_spec=None,
+                    connection_drawing_spec=mp_styles.get_default_face_mesh_iris_connections_style(),
+                )
+            except Exception:
+                fm = None
+
+        if fm is None and len(kpts) >= 91:
+            # Fallback to DWPose 68 clean facial contours
+            FACE_EDGES = [
+                # Jawline (0..16)
+                (0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 7), (7, 8),
+                (8, 9), (9, 10), (10, 11), (11, 12), (12, 13), (13, 14), (14, 15), (15, 16),
+                # Right eyebrow (17..21)
+                (17, 18), (18, 19), (19, 20), (20, 21),
+                # Left eyebrow (22..26)
+                (22, 23), (23, 24), (24, 25), (25, 26),
+                # Nose bridge (27..30)
+                (27, 28), (28, 29), (29, 30),
+                # Nose bottom (31..35)
+                (31, 32), (32, 33), (33, 34), (34, 35),
+                # Right eye loop (36..41)
+                (36, 37), (37, 38), (38, 39), (39, 40), (40, 41), (41, 36),
+                # Left eye loop (42..47)
+                (42, 43), (43, 44), (44, 45), (45, 46), (46, 47), (47, 42),
+                # Outer lips loop (48..59)
+                (48, 49), (49, 50), (50, 51), (51, 52), (52, 53), (53, 54),
+                (54, 55), (55, 56), (56, 57), (57, 58), (58, 59), (59, 48),
+                # Inner lips loop (60..67)
+                (60, 61), (61, 62), (62, 63), (63, 64), (64, 65), (65, 66), (66, 67), (67, 60),
+            ]
+            face_offset = 23
+            for (p1, p2) in FACE_EDGES:
+                idx1 = face_offset + p1
+                idx2 = face_offset + p2
+                if idx1 < len(scores) and idx2 < len(scores):
+                    if scores[idx1] > thresh and scores[idx2] > thresh:
+                        pt1 = (int(kpts[idx1, 0]), int(kpts[idx1, 1]))
+                        pt2 = (int(kpts[idx2, 0]), int(kpts[idx2, 1]))
+                        cv2.line(frame, pt1, pt2, (0, 220, 255), 1, cv2.LINE_AA)
+
+            for i in range(min(68, max(0, len(kpts) - face_offset))):
+                idx = face_offset + i
+                if scores[idx] > thresh:
+                    cv2.circle(frame, (int(kpts[idx, 0]), int(kpts[idx, 1])), 1, (255, 200, 0), -1, cv2.LINE_AA)
+
+        # 3. Hand connections (Left: Magenta, Right: Cyan)
         hand_edges = [
             (0,1), (1,2), (2,3), (3,4),
             (0,5), (5,6), (6,7), (7,8),
@@ -358,7 +466,7 @@ class DWPoseDetector:
                 if scores[p1] > thresh and scores[p2] > thresh:
                     pt1 = (int(kpts[p1, 0]), int(kpts[p1, 1]))
                     pt2 = (int(kpts[p2, 0]), int(kpts[p2, 1]))
-                    cv2.line(frame, pt1, pt2, (255, 0, 255), 2)
+                    cv2.line(frame, pt1, pt2, (255, 0, 255), 2, cv2.LINE_AA)
 
         # Right hand (112..133) - Cyan
         for e1, e2 in hand_edges:
@@ -367,12 +475,12 @@ class DWPoseDetector:
                 if scores[p1] > thresh and scores[p2] > thresh:
                     pt1 = (int(kpts[p1, 0]), int(kpts[p1, 1]))
                     pt2 = (int(kpts[p2, 0]), int(kpts[p2, 1]))
-                    cv2.line(frame, pt1, pt2, (0, 255, 255), 2)
+                    cv2.line(frame, pt1, pt2, (0, 255, 255), 2, cv2.LINE_AA)
 
         # Draw hand joints
         for i in range(91, min(133, len(kpts))):
             if scores[i] > thresh:
                 color = (255, 100, 255) if i < 112 else (100, 255, 255)
-                cv2.circle(frame, (int(kpts[i, 0]), int(kpts[i, 1])), 3, color, -1)
+                cv2.circle(frame, (int(kpts[i, 0]), int(kpts[i, 1])), 3, color, -1, cv2.LINE_AA)
 
         return frame

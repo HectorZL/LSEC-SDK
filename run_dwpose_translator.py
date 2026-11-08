@@ -137,12 +137,12 @@ def main():
                     hands_detected=hands_detected,
                     target_conf=target_conf,
                 )
-                # Small GPU badge on top left
-                cv2.putText(display_frame, f"GPU: DWPose (CUDA) | FPS: {current_fps:4.1f}", (w - 380, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 120), 1)
+                # Small GPU badge on top right
+                cv2.putText(display_frame, f"GPU: DWPose (CUDA) + CPU FaceMesh | FPS: {current_fps:4.1f}", (w - 440, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 120), 1)
             else:
                 # Top bar HUD for free translator
                 cv2.rectangle(display_frame, (0, 0), (w, 55), (15, 15, 15), -1)
-                cv2.putText(display_frame, f"FPS: {current_fps:4.1f} (DWPose CUDA)", (20, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 120), 2)
+                cv2.putText(display_frame, f"FPS: {current_fps:4.1f} (DWPose CUDA + FaceMesh)", (20, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 120), 2)
                 cv2.putText(display_frame, "[T]: Modo Tutor | [M]: Menu | [Q]: Salir", (w - 380, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 220, 255), 1)
 
                 is_active = (time.time() - last_detection_time) < 2.0

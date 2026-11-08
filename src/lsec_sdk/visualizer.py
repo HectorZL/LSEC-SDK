@@ -32,10 +32,30 @@ BODY_CONNECTIONS: List[Tuple[int, int]] = [
     (8, 12),  # MidHip - LHip
     (12, 13), # LHip - LKnee
     (13, 14), # LKnee - LAnkle
-    (0, 15),  # Nose - REye
-    (15, 17), # REye - REar
-    (0, 16),  # Nose - LEye
-    (16, 18), # LEye - LEar
+]
+
+# Anatomical Face connections (relative to FACE_SLICE.start = 25)
+FACE_CONNECTIONS: List[Tuple[int, int]] = [
+    # Jawline (0..16)
+    (0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 7), (7, 8),
+    (8, 9), (9, 10), (10, 11), (11, 12), (12, 13), (13, 14), (14, 15), (15, 16),
+    # Right eyebrow (17..21)
+    (17, 18), (18, 19), (19, 20), (20, 21),
+    # Left eyebrow (22..26)
+    (22, 23), (23, 24), (24, 25), (25, 26),
+    # Nose bridge (27..30)
+    (27, 28), (28, 29), (29, 30),
+    # Nose bottom (31..35)
+    (31, 32), (32, 33), (33, 34), (34, 35),
+    # Right eye loop (36..41)
+    (36, 37), (37, 38), (38, 39), (39, 40), (40, 41), (41, 36),
+    # Left eye loop (42..47)
+    (42, 43), (43, 44), (44, 45), (45, 46), (46, 47), (47, 42),
+    # Outer lips loop (48..59)
+    (48, 49), (49, 50), (50, 51), (51, 52), (52, 53), (53, 54),
+    (54, 55), (55, 56), (56, 57), (57, 58), (58, 59), (59, 48),
+    # Inner lips loop (60..67)
+    (60, 61), (61, 62), (62, 63), (63, 64), (64, 65), (65, 66), (66, 67), (67, 60),
 ]
 
 # Hand finger bones (relative to wrist 0)
@@ -108,21 +128,28 @@ class Visualizer:
             if p1 is not None and p2 is not None:
                 cv2.line(img, (p1[0], p1[1]), (p2[0], p2[1]), self.color_pose, 2, cv2.LINE_AA)
 
-        # 2. Draw Hand Bones (Left Hand: 95 to 115)
+        # 2. Draw Facial Contours (Face: 25 to 94)
+        face_offset = FACE_SLICE.start
+        for i1, i2 in FACE_CONNECTIONS:
+            p1, p2 = pts[face_offset + i1], pts[face_offset + i2]
+            if p1 is not None and p2 is not None:
+                cv2.line(img, (p1[0], p1[1]), (p2[0], p2[1]), self.color_face, 1, cv2.LINE_AA)
+
+        # 3. Draw Hand Bones (Left Hand: 95 to 115)
         lh_offset = HAND_LEFT_SLICE.start
         for i1, i2 in HAND_CONNECTIONS:
             p1, p2 = pts[lh_offset + i1], pts[lh_offset + i2]
             if p1 is not None and p2 is not None:
                 cv2.line(img, (p1[0], p1[1]), (p2[0], p2[1]), self.color_hand_left, 2, cv2.LINE_AA)
 
-        # 3. Draw Hand Bones (Right Hand: 116 to 136)
+        # 4. Draw Hand Bones (Right Hand: 116 to 136)
         rh_offset = HAND_RIGHT_SLICE.start
         for i1, i2 in HAND_CONNECTIONS:
             p1, p2 = pts[rh_offset + i1], pts[rh_offset + i2]
             if p1 is not None and p2 is not None:
                 cv2.line(img, (p1[0], p1[1]), (p2[0], p2[1]), self.color_hand_right, 2, cv2.LINE_AA)
 
-        # 4. Draw Joint Circles
+        # 5. Draw Joint Circles
         for i, p in enumerate(pts):
             if p is None:
                 continue
