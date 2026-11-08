@@ -170,7 +170,7 @@ class LiveInferenceEngine:
         dynamic_movement = max(rw_span, lw_span, rh_span, lh_span)
 
         # If both wrists are in resting position or motionless in place:
-        if not (r_elevated or l_elevated) or active_motion < 0.0035 or dynamic_movement < 0.038:
+        if not (r_elevated or l_elevated) or active_motion < 0.0030 or dynamic_movement < 0.026:
             return 0.0
 
         max_prob = 0.0
@@ -235,7 +235,7 @@ class LiveInferenceEngine:
         lh_span = float(np.mean(np.ptp(seq_arr[-n_span:, 95:116, :2], axis=0))) if n_span >= 8 else 0.0
         dynamic_movement = max(rw_span, lw_span, rh_span, lh_span)
 
-        if not (r_elevated or l_elevated) or active_motion < 0.0035 or dynamic_movement < 0.038:
+        if not (r_elevated or l_elevated) or active_motion < 0.0030 or dynamic_movement < 0.026:
             # Hands are resting down or held in a static position without gesture dynamics: emit silence
             self.last_emitted_sign = None
             self.last_stable_prediction = None

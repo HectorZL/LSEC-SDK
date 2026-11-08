@@ -246,6 +246,60 @@ class DWPoseDetector:
 
         kpts, scores = self._decode_simcc(simcc_x, simcc_y, center, scale)
 
+        # Anatomical Hand Continuity & Anti-Cross-Hallucination Filter:
+        # Enforces that hand keypoints must physically connect to their corresponding wrist.
+        # Eliminates ghost hand hallucinations where DWPose projects left hand points onto the right thumb/hand (or vice-versa).
+        shoulder_dist = 120.0
+        if len(scores) > 6 and scores[5] > 0.15 and scores[6] > 0.15:
+            shoulder_dist = float(np.linalg.norm(kpts[5] - kpts[6]))
+        max_wrist_hand_dist = max(65.0, shoulder_dist * 0.45)
+
+        # 1. Left Hand Validation (COCO arm wrist 9 vs hand root 91)
+        if len(scores) >= 112:
+            lh_valid = True
+            if scores[9] > 0.12:
+                dist_lw_lh = float(np.linalg.norm(kpts[9] - kpts[91]))
+                if dist_lw_lh > max_wrist_hand_dist:
+                    lh_valid = False
+                elif scores[10] > 0.15:
+                    dist_rw_lh = float(np.linalg.norm(kpts[10] - kpts[91]))
+                    # Hallucination check: left hand points attached to right wrist/thumb
+                    if dist_rw_lh < dist_lw_lh * 0.65:
+                        lh_valid = False
+            else:
+                if scores[91] < 0.40:
+                    lh_valid = False
+                elif scores[10] > 0.15:
+                    dist_rw_lh = float(np.linalg.norm(kpts[10] - kpts[91]))
+                    if dist_rw_lh < max_wrist_hand_dist:
+                        lh_valid = False
+
+            if not lh_valid:
+                scores[91:112] = 0.0
+
+        # 2. Right Hand Validation (COCO arm wrist 10 vs hand root 112)
+        if len(scores) >= 133:
+            rh_valid = True
+            if scores[10] > 0.12:
+                dist_rw_rh = float(np.linalg.norm(kpts[10] - kpts[112]))
+                if dist_rw_rh > max_wrist_hand_dist:
+                    rh_valid = False
+                elif scores[9] > 0.15:
+                    dist_lw_rh = float(np.linalg.norm(kpts[9] - kpts[112]))
+                    # Hallucination check: right hand points attached to left wrist/thumb
+                    if dist_lw_rh < dist_rw_rh * 0.65:
+                        rh_valid = False
+            else:
+                if scores[112] < 0.40:
+                    rh_valid = False
+                elif scores[9] > 0.15:
+                    dist_lw_rh = float(np.linalg.norm(kpts[9] - kpts[112]))
+                    if dist_lw_rh < max_wrist_hand_dist:
+                        rh_valid = False
+
+            if not rh_valid:
+                scores[112:133] = 0.0
+
         # Update FaceMesh landmarks on RGB frame with spatial anchor validation
         # Ensures FaceMesh attaches ONLY to the user's head, rejecting ghost faces on chairs, logos or background
         if self.enable_facemesh and self.face_mesh is not None:
@@ -396,12 +450,20 @@ class DWPoseDetector:
         # 3. Left Hand: COCO WholeBody 21 landmarks (91..112) -> LSEC SDK 95..116
         if len(kpts) >= 112:
             for i in range(21):
-                tensor[HAND_LEFT_SLICE.start + i] = [kpts[91 + i, 0] / w, kpts[91 + i, 1] / h, float(scores[91 + i])]
+                idx = 91 + i
+                if scores[idx] > 0.10:
+                    tensor[HAND_LEFT_SLICE.start + i] = [kpts[idx, 0] / w, kpts[idx, 1] / h, float(scores[idx])]
+                else:
+                    tensor[HAND_LEFT_SLICE.start + i] = [0.0, 0.0, 0.0]
 
         # 4. Right Hand: COCO WholeBody 21 landmarks (112..133) -> LSEC SDK 116..137
         if len(kpts) >= 133:
             for i in range(21):
-                tensor[HAND_RIGHT_SLICE.start + i] = [kpts[112 + i, 0] / w, kpts[112 + i, 1] / h, float(scores[112 + i])]
+                idx = 112 + i
+                if scores[idx] > 0.10:
+                    tensor[HAND_RIGHT_SLICE.start + i] = [kpts[idx, 0] / w, kpts[idx, 1] / h, float(scores[idx])]
+                else:
+                    tensor[HAND_RIGHT_SLICE.start + i] = [0.0, 0.0, 0.0]
 
         return tensor
 
