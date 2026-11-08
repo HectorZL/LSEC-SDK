@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LSEC AI - Traductor Inteligente con SAD (CONADIS Ecuador)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0b0f19;
+            color: #f3f4f6;
+        }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        .glow-gold { box-shadow: 0 0 25px rgba(234, 179, 8, 0.45); }
+        .glow-cyan { box-shadow: 0 0 25px rgba(6, 182, 212, 0.45); }
+        .glow-green { box-shadow: 0 0 25px rgba(34, 197, 94, 0.45); }
+        .pulse-recording {
+            animation: pulse-ring 1.5s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+        }
+        @keyframes pulse-ring {
+            0% { transform: scale(0.98); opacity: 0.9; }
+            50% { transform: scale(1.02); opacity: 1; }
+            100% { transform: scale(0.98); opacity: 0.9; }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between">
+
+    <!-- Top Navigation Bar -->
+    <header class="border-b border-gray-800 bg-gray-950/80 backdrop-blur sticky top-0 z-50 px-6 py-4 flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center font-bold text-xl shadow-lg shadow-cyan-500/20">
+                🤟
+            </div>
+            <div>
+                <h1 class="font-extrabold text-lg text-white flex items-center gap-2">
+                    LSEC AI Translator
+                    <span class="text-xs bg-cyan-950 text-cyan-400 border border-cyan-800 px-2 py-0.5 rounded-full font-mono">CONADIS Ecuador</span>
+                </h1>
+                <p class="text-xs text-gray-400">Traducción Transparente con SAD (Sign Activity Detection) acelerado en RTX 3060</p>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3 text-xs font-mono">
+            <div class="flex items-center gap-1.5 bg-gray-900 border border-gray-800 px-3 py-1.5 rounded-lg">
+                <span class="w-2 h-2 rounded-full bg-green-500 animate-ping"></span>
+                <span class="text-gray-300">GPU:</span>
+                <span class="text-green-400 font-bold" id="gpu-badge">NVIDIA RTX 3060 (CUDA)</span>
+            </div>
+            <div class="bg-gray-900 border border-gray-800 px-3 py-1.5 rounded-lg text-gray-300">
+                Clases: <span class="text-cyan-400 font-bold" id="classes-badge">24 Señas + Reposo</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <!-- Left Column: Webcam & Live Activity Trigger (7 Cols) -->
+        <section class="lg:col-span-7 flex flex-col gap-4">
+            
+            <!-- Video Preview Card -->
+            <div class="relative bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden shadow-2xl flex flex-col">
+                
+                <!-- Live Video Element -->
+                <div class="relative aspect-video bg-black flex items-center justify-center overflow-hidden">
+                    <video id="webcam" autoplay playsinline muted class="w-full h-full object-cover transform scale-x-[-1]"></video>
+                    
+                    <!-- Signing Space Guide Box -->
+                    <div id="signing-box" class="absolute inset-x-[15%] top-[10%] bottom-[15%] border-2 border-dashed border-cyan-500/30 rounded-2xl pointer-events-none transition-all flex items-start justify-center pt-2">
+                        <span class="text-[10px] uppercase font-mono text-cyan-400/60 bg-gray-950/70 px-2 py-0.5 rounded">Espacio de Señas</span>
+                    </div>
+
+                    <!-- Overlay State Badge (Huge & Prominent) -->
+                    <div id="status-overlay" class="absolute top-4 left-4 bg-gray-950/85 backdrop-blur border border-gray-700 px-4 py-2 rounded-xl flex items-center space-x-3 transition-all">
+                        <span id="status-dot" class="w-3.5 h-3.5 rounded-full bg-emerald-500"></span>
+                        <div>
+                            <p id="status-title" class="text-xs font-bold uppercase tracking-wider text-emerald-400 font-mono">EN REPOSO</p>
+                            <p id="status-desc" class="text-[11px] text-gray-400">Levanta tus manos para señar</p>
+                        </div>
+                    </div>
+
+                    <!-- Recording Progress Bar (Bottom of video) -->
+                    <div id="rec-bar-container" class="absolute bottom-0 inset-x-0 h-1.5 bg-gray-950 overflow-hidden hidden">
+                        <div id="rec-bar" class="h-full bg-amber-500 transition-all duration-75" style="width: 0%"></div>
+                    </div>
+
+                    <!-- Processing Spinner Overlay -->
+                    <div id="processing-overlay" class="absolute inset-0 bg-gray-950/80 backdrop-blur-sm flex flex-col items-center justify-center space-y-3 hidden">
+                        <div class="w-12 h-12 border-4 border-cyan-500/20 border-t-cyan-500 rounded-full animate-spin"></div>
+                        <p class="text-sm font-bold text-cyan-400 font-mono">PROCESANDO EN RTX 3060 (DWPose + BiLSTM)...</p>
+                    </div>
+                </div>
+
+                <!-- Live Metrics & Controls Bar -->
+                <div class="p-4 bg-gray-950/60 border-t border-gray-800 flex flex-wrap items-center justify-between gap-4 text-xs font-mono">
+                    <div class="flex items-center space-x-3">
+                        <label class="flex items-center space-x-2 cursor-pointer select-none">
+                            <input type="checkbox" id="auto-sad-toggle" checked class="w-4 h-4 rounded text-cyan-600 focus:ring-0 bg-gray-800 border-gray-700">
+                            <span class="text-gray-200 font-semibold">Detección Automática (SAD)</span>
+                        </label>
+                        <span class="text-gray-600">|</span>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-gray-400">Energía:</span>
+                            <div class="w-20 bg-gray-800 h-2 rounded-full overflow-hidden">
+                                <div id="energy-meter" class="bg-cyan-500 h-full transition-all duration-75" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center space-x-2">
+                        <button id="manual-btn" class="bg-gray-800 hover:bg-gray-700 active:bg-gray-600 text-gray-200 px-3 py-1.5 rounded-lg border border-gray-700 flex items-center space-x-1.5 transition">
+                            <span>⏺</span>
+                            <span>Grabar Manual (2.2s)</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Vocabulary Quick Palette -->
+            <div class="bg-gray-900/60 border border-gray-800 rounded-xl p-3.5">
+                <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 font-mono">Señas CONADIS Disponibles en el Modelo:</p>
+                <div class="flex flex-wrap gap-1.5" id="vocab-pills">
+                    <!-- Dynamic badges will be populated here -->
+                </div>
+            </div>
+
+        </section>
+
+        <!-- Right Column: Result Hero & Performance Metrics (5 Cols) -->
+        <section class="lg:col-span-5 flex flex-col gap-4">
+            
+            <!-- Result Hero Card -->
+            <div class="bg-gradient-to-br from-gray-900 to-gray-950 border border-gray-800 rounded-2xl p-6 shadow-xl relative overflow-hidden flex flex-col justify-between min-h-[300px]">
+                
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-xs font-mono uppercase tracking-widest text-gray-400">Traducción LSEC</span>
+                    <button id="speak-btn" class="text-gray-400 hover:text-cyan-400 text-sm bg-gray-800/80 p-2 rounded-lg transition" title="Repetir voz">
+                        🔊 Escuchar
+                    </button>
+                </div>
+
+                <!-- Big Result Name -->
+                <div class="my-auto text-center">
+                    <div id="result-badge" class="inline-block px-3 py-1 bg-gray-800 text-gray-400 text-xs font-mono rounded-full mb-3">
+                        Esperando primera seña...
+                    </div>
+                    <h2 id="result-text" class="text-4xl sm:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white via-cyan-200 to-cyan-400 tracking-tight leading-tight">
+                        ---
+                    </h2>
+                    
+                    <!-- Confidence Bar -->
+                    <div class="mt-4 max-w-xs mx-auto">
+                        <div class="flex justify-between text-xs font-mono text-gray-400 mb-1">
+                            <span>Confianza:</span>
+                            <span id="result-conf" class="text-cyan-400 font-bold">0.0%</span>
+                        </div>
+                        <div class="h-2 bg-gray-800 rounded-full overflow-hidden">
+                            <div id="conf-progress" class="h-full bg-cyan-400 transition-all duration-300" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Performance Breakdown Metrics -->
+                <div class="mt-6 pt-4 border-t border-gray-800/80 grid grid-cols-3 gap-2 text-center font-mono">
+                    <div class="bg-gray-900/80 p-2.5 rounded-xl border border-gray-800">
+                        <p class="text-[10px] text-gray-500 uppercase">Duración</p>
+                        <p id="metric-duration" class="text-sm font-bold text-gray-200">0.0 s</p>
+                    </div>
+                    <div class="bg-gray-900/80 p-2.5 rounded-xl border border-gray-800">
+                        <p class="text-[10px] text-gray-500 uppercase">Cuadros</p>
+                        <p id="metric-frames" class="text-sm font-bold text-gray-200">0</p>
+                    </div>
+                    <div class="bg-gray-900/80 p-2.5 rounded-xl border border-gray-800">
+                        <p class="text-[10px] text-gray-500 uppercase">Latencia GPU</p>
+                        <p id="metric-latency" class="text-sm font-bold text-cyan-400">0 ms</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Translation History Table -->
+            <div class="bg-gray-900/60 border border-gray-800 rounded-xl p-4 flex-1 flex flex-col overflow-hidden">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider font-mono">Historial de Sesión</h3>
+                    <button id="clear-hist-btn" class="text-[11px] text-gray-500 hover:text-gray-300 font-mono">Limpiar</button>
+                </div>
+                <div id="history-list" class="space-y-2 overflow-y-auto max-h-48 pr-1 flex-1 font-mono text-xs">
+                    <p class="text-gray-600 text-center py-6 italic text-[11px]">No hay traducciones registradas aún.</p>
+                </div>
+            </div>
+
+        </section>
+
+    </main>
+
+    <!-- Offscreen Processing Canvas -->
+    <canvas id="offscreen-canvas" width="320" height="240" class="hidden"></canvas>
+    <canvas id="diff-canvas" width="160" height="120" class="hidden"></canvas>
+
+    <!-- Core Interactive Script -->
+    <script>
+        const video = document.getElementById('webcam');
+        const offCanvas = document.getElementById('offscreen-canvas');
+        const offCtx = offCanvas.getContext('2d');
+        const diffCanvas = document.getElementById('diff-canvas');
+        const diffCtx = diffCanvas.getContext('2d', { willReadFrequently: true });
+
+        // HUD Elements
+        const statusOverlay = document.getElementById('status-overlay');
+        const statusDot = document.getElementById('status-dot');
+        const statusTitle = document.getElementById('status-title');
+        const statusDesc = document.getElementById('status-desc');
+        const signingBox = document.getElementById('signing-box');
+        const recBarContainer = document.getElementById('rec-bar-container');
+        const recBar = document.getElementById('rec-bar');
+        const processingOverlay = document.getElementById('processing-overlay');
+        const energyMeter = document.getElementById('energy-meter');
+        const resultText = document.getElementById('result-text');
+        const resultBadge = document.getElementById('result-badge');
+        const resultConf = document.getElementById('result-conf');
+        const confProgress = document.getElementById('conf-progress');
+        const metricDuration = document.getElementById('metric-duration');
+        const metricFrames = document.getElementById('metric-frames');
+        const metricLatency = document.getElementById('metric-latency');
+        const historyList = document.getElementById('history-list');
+        const vocabPills = document.getElementById('vocab-pills');
+        const autoSadToggle = document.getElementById('auto-sad-toggle');
+        const manualBtn = document.getElementById('manual-btn');
+        const speakBtn = document.getElementById('speak-btn');
+        const clearHistBtn = document.getElementById('clear-hist-btn');
+
+        // SAD State Machine Variables
+        let isRecording = false;
+        let isProcessing = false;
+        let activeFramesBlobs = [];
+        let preBufferBlobs = [];
+        const MAX_PRE_BUFFER = 10;
+        let inactiveStreak = 0;
+        const END_COOLDOWN_FRAMES = 10; // ~330ms of rest to close
+        const MIN_GESTURE_FRAMES = 18;  // ~0.6s minimum
+        const MAX_GESTURE_FRAMES = 90;  // ~3.0s maximum
+
+        let lastDiffImageData = null;
+        let lastPrediction = "";
+        let audioVoice = null;
+
+        // Initialize Speech Synthesis
+        function initVoice() {
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.onvoiceschanged = () => {
+                    const voices = window.speechSynthesis.getVoices();
+                    audioVoice = voices.find(v => v.lang.startsWith('es')) || voices[0];
+                };
+            }
+        }
+        initVoice();
+
+        function speakWord(text) {
+            if (!text || text === "---" || text === "REPOSO" || !('speechSynthesis' in window)) return;
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.rate = 1.0;
+            if (audioVoice) utterance.voice = audioVoice;
+            window.speechSynthesis.speak(utterance);
+        }
+
+        // Initialize Webcam
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } },
+                    audio: false
+                });
+                video.srcObject = stream;
+            } catch (err) {
+                alert("Error al acceder a la cámara: " + err.message);
+            }
+        }
+
+        // Fetch Server Info & Classes
+        async function loadServerInfo() {
+            try {
+                const res = await fetch('/');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.gpu_name) document.getElementById('gpu-badge').textContent = data.gpu_name;
+                    if (data.vocabulary) {
+                        vocabPills.innerHTML = data.vocabulary
+                            .filter(v => v !== "REPOSO")
+                            .map(v => `<span class="px-2 py-0.5 bg-gray-800 border border-gray-700/60 rounded text-[11px] text-gray-300">${v}</span>`)
+                            .join('');
+                    }
+                }
+            } catch (e) {
+                console.warn("No se pudo conectar al endpoint info:", e);
+            }
+        }
+
+        // Calculate motion energy in the signing space quadrant
+        function computeMotionEnergy() {
+            diffCtx.drawImage(video, 0, 0, 160, 120);
+            const currentData = diffCtx.getImageData(0, 0, 160, 120);
+
+            if (!lastDiffImageData) {
+                lastDiffImageData = currentData;
+                return 0;
+            }
+
+            let diffSum = 0;
+            let count = 0;
+            const cur = currentData.data;
+            const prev = lastDiffImageData.data;
+
+            // Analyze only the upper-middle quadrant (Signing Space)
+            // Y from 15% to 80%, X from 15% to 85%
+            const startY = Math.floor(120 * 0.15);
+            const endY = Math.floor(120 * 0.85);
+            const startX = Math.floor(160 * 0.15);
+            const endX = Math.floor(160 * 0.85);
+
+            for (let y = startY; y < endY; y += 2) {
+                for (let x = startX; x < endX; x += 2) {
+                    const idx = (y * 160 + x) * 4;
+                    const r = Math.abs(cur[idx] - prev[idx]);
+                    const g = Math.abs(cur[idx+1] - prev[idx+1]);
+                    const b = Math.abs(cur[idx+2] - prev[idx+2]);
+                    diffSum += (r + g + b) / 3;
+                    count++;
+                }
+            }
+
+            lastDiffImageData = currentData;
+            return count > 0 ? (diffSum / count) : 0;
+        }
+
+        // Update UI State Badges
+        function setUIState(state) {
+            if (state === "IDLE") {
+                statusDot.className = "w-3.5 h-3.5 rounded-full bg-emerald-500";
+                statusTitle.className = "text-xs font-bold uppercase tracking-wider text-emerald-400 font-mono";
+                statusTitle.textContent = "EN REPOSO";
+                statusDesc.textContent = "Levanta tus manos para señar";
+                signingBox.className = "absolute inset-x-[15%] top-[10%] bottom-[15%] border-2 border-dashed border-cyan-500/30 rounded-2xl pointer-events-none transition-all flex items-start justify-center pt-2";
+                recBarContainer.classList.add('hidden');
+                processingOverlay.classList.add('hidden');
+            } else if (state === "RECORDING") {
+                statusDot.className = "w-3.5 h-3.5 rounded-full bg-amber-500 pulse-recording";
+                statusTitle.className = "text-xs font-bold uppercase tracking-wider text-amber-400 font-mono";
+                statusTitle.textContent = "GRABANDO SEÑA AUTOMÁTICA...";
+                statusDesc.textContent = "Ejecutando gesto en espacio de señas";
+                signingBox.className = "absolute inset-x-[15%] top-[10%] bottom-[15%] border-2 border-solid border-amber-400 rounded-2xl pointer-events-none transition-all flex items-start justify-center pt-2 glow-gold";
+                recBarContainer.classList.remove('hidden');
+                processingOverlay.classList.add('hidden');
+            } else if (state === "PROCESSING") {
+                processingOverlay.classList.remove('hidden');
+                recBarContainer.classList.add('hidden');
+            }
+        }
+
+        // Send Captured Frames to Server API
+        async function sendFramesForTranslation(frames) {
+            if (isProcessing || frames.length < MIN_GESTURE_FRAMES) return;
+            isProcessing = true;
+            setUIState("PROCESSING");
+
+            const formData = new FormData();
+            frames.forEach((blob, idx) => {
+                formData.append('files', blob, `frame_${idx}.jpg`);
+            });
+
+            try {
+                const res = await fetch('/api/v1/translate_frames', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.success && data.prediction !== "REPOSO") {
+                        displayResult(data);
+                    }
+                }
+            } catch (err) {
+                console.error("Error enviando frames:", err);
+            } finally {
+                isProcessing = false;
+                setUIState("IDLE");
+            }
+        }
+
+        // Display Result & Speak
+        function displayResult(data) {
+            lastPrediction = data.prediction;
+            resultText.textContent = data.prediction;
+            const pct = (data.confidence * 100).toFixed(1);
+            resultConf.textContent = `${pct}%`;
+            confProgress.style.width = `${pct}%`;
+            resultBadge.textContent = "SEÑA IDENTIFICADA";
+            resultBadge.className = "inline-block px-3 py-1 bg-cyan-950 border border-cyan-700 text-cyan-300 text-xs font-mono rounded-full mb-3 glow-cyan";
+
+            metricDuration.textContent = `${data.duration_seconds} s`;
+            metricFrames.textContent = data.total_frames;
+            metricLatency.textContent = `${data.inference_time_ms} ms`;
+
+            speakWord(data.prediction);
+            addToHistory(data.prediction, pct, data.duration_seconds, data.inference_time_ms);
+        }
+
+        function addToHistory(sign, conf, dur, lat) {
+            const time = new Date().toLocaleTimeString();
+            const emptyMsg = historyList.querySelector('p');
+            if (emptyMsg) emptyMsg.remove();
+
+            const item = document.createElement('div');
+            item.className = "bg-gray-900 border border-gray-800 p-2.5 rounded-lg flex items-center justify-between";
+            item.innerHTML = `
+                <div>
+                    <span class="text-white font-bold">${sign}</span>
+                    <span class="text-[10px] text-gray-500 ml-1">(${dur}s)</span>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <span class="text-cyan-400 font-bold">${conf}%</span>
+                    <span class="text-[10px] text-gray-500">${lat}ms</span>
+                </div>
+            `;
+            historyList.prepend(item);
+        }
+
+        // Main 30 FPS Processing Loop
+        let frameInterval = null;
+        function startDetectionLoop() {
+            frameInterval = setInterval(() => {
+                if (video.readyState < 2 || isProcessing) return;
+
+                // 1. Draw current frame to offscreen canvas
+                offCtx.drawImage(video, 0, 0, 320, 240);
+
+                // 2. Compute motion energy
+                const energy = computeMotionEnergy();
+                const energyPct = Math.min(100, Math.round((energy / 18) * 100));
+                energyMeter.style.width = `${energyPct}%`;
+
+                // 3. Convert frame to JPEG Blob
+                offCanvas.toBlob(blob => {
+                    if (!blob) return;
+
+                    const THRESHOLD = 7.5; // Motion threshold in signing space
+                    const isActiveMotion = energy > THRESHOLD;
+
+                    if (!isRecording) {
+                        // In IDLE: maintain rolling pre-buffer
+                        preBufferBlobs.push(blob);
+                        if (preBufferBlobs.length > MAX_PRE_BUFFER) preBufferBlobs.shift();
+
+                        if (autoSadToggle.checked && isActiveMotion) {
+                            // Start auto recording!
+                            isRecording = true;
+                            activeFramesBlobs = [...preBufferBlobs, blob];
+                            preBufferBlobs = [];
+                            inactiveStreak = 0;
+                            setUIState("RECORDING");
+                        }
+                    } else {
+                        // While RECORDING:
+                        activeFramesBlobs.push(blob);
+                        const progress = Math.min(100, (activeFramesBlobs.length / MAX_GESTURE_FRAMES) * 100);
+                        recBar.style.width = `${progress}%`;
+
+                        if (!isActiveMotion) {
+                            inactiveStreak++;
+                        } else {
+                            inactiveStreak = 0;
+                        }
+
+                        // Close conditions
+                        const reachedCooldown = inactiveStreak >= END_COOLDOWN_FRAMES;
+                        const reachedMax = activeFramesBlobs.length >= MAX_GESTURE_FRAMES;
+
+                        if (reachedCooldown || reachedMax) {
+                            isRecording = false;
+                            const captured = [...activeFramesBlobs];
+                            activeFramesBlobs = [];
+                            inactiveStreak = 0;
+
+                            if (captured.length >= MIN_GESTURE_FRAMES) {
+                                sendFramesForTranslation(captured);
+                            } else {
+                                setUIState("IDLE");
+                            }
+                        }
+                    }
+                }, 'image/jpeg', 0.65);
+
+            }, 33); // ~30 FPS
+        }
+
+        // Manual Capture Button Handler
+        manualBtn.onclick = () => {
+            if (isRecording || isProcessing) return;
+            isRecording = true;
+            activeFramesBlobs = [];
+            setUIState("RECORDING");
+            setTimeout(() => {
+                if (isRecording) {
+                    isRecording = false;
+                    const captured = [...activeFramesBlobs];
+                    activeFramesBlobs = [];
+                    sendFramesForTranslation(captured);
+                }
+            }, 2200);
+        };
+
+        speakBtn.onclick = () => speakWord(lastPrediction);
+        clearHistBtn.onclick = () => {
+            historyList.innerHTML = '<p class="text-gray-600 text-center py-6 italic text-[11px]">Historial limpiado.</p>';
+        };
+
+        // Bootstrap on load
+        window.addEventListener('DOMContentLoaded', async () => {
+            await startCamera();
+            await loadServerInfo();
+            startDetectionLoop();
+        });
+    </script>
+</body>
+</html>

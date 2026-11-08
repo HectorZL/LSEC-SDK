@@ -55,19 +55,12 @@ def get_inference_engine() -> LiveInferenceEngine:
     return engine
 
 
-def get_detector() -> DWPoseDetector:
-    global detector
-    if detector is None:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        print(f"[API] Inicializando DWPoseDetector en: {device}...")
-        detector = DWPoseDetector(device=device, enable_facemesh=True)
-    return get_detector_instance()
-
 def get_detector_instance() -> DWPoseDetector:
     global detector
     if detector is None:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        detector = DWPoseDetector(device=device, enable_facemesh=True)
+        providers = ["CUDAExecutionProvider", "CPUExecutionProvider"] if torch.cuda.is_available() else ["CPUExecutionProvider"]
+        print(f"[API] Inicializando DWPoseDetector con providers: {providers}...")
+        detector = DWPoseDetector(providers=providers, enable_facemesh=True)
     return detector
 
 
@@ -82,6 +75,19 @@ def startup_event():
     get_inference_engine()
 
 
+from fastapi.responses import HTMLResponse, FileResponse
+
+@app.get("/demo", response_class=HTMLResponse)
+@app.get("/web", response_class=HTMLResponse)
+def get_web_demo():
+    """Sirve la interfaz web interactiva en tiempo real con SAD."""
+    html_path = os.path.join(os.path.dirname(__file__), "static", "index.html")
+    if os.path.exists(html_path):
+        with open(html_path, "r", encoding="utf-8") as f:
+            return f.read()
+    return "<h1>Interfaz Web no encontrada</h1>"
+
+
 @app.get("/")
 def health_check():
     eng = get_inference_engine()
@@ -89,11 +95,69 @@ def health_check():
     return {
         "status": "online",
         "service": "LSEC Recognition Microservice (CONADIS Ecuador)",
+        "web_demo_url": "/demo",
         "device": str(eng.device),
         "cuda_available": torch.cuda.is_available(),
         "gpu_name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU",
         "total_classes": len(labels),
         "vocabulary": labels,
+    }
+
+
+@app.post("/api/v1/translate_frames")
+async def translate_frames(files: List[UploadFile] = File(...)):
+    """
+    Recibe una ráfaga de imágenes JPEG (frames consecutivos a 25-30 FPS)
+    capturados por la interfaz web transparente (SAD).
+    Procesa directamente con DWPose GPU + BiLSTM sin requerir códecs de video en el servidor.
+    """
+    t0 = time.time()
+    if len(files) < 12:
+        raise HTTPException(status_code=400, detail="Se requieren al menos 12 fotogramas.")
+
+    frames = []
+    for f in files:
+        bytes_data = await f.read()
+        nparr = np.frombuffer(bytes_data, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is not None:
+            frames.append(img)
+
+    if len(frames) < 12:
+        raise HTTPException(status_code=400, detail="No se pudieron decodificar suficientes fotogramas.")
+
+    det = get_detector_instance()
+    eng = get_inference_engine()
+
+    t_ext_start = time.time()
+    kp_sequence = []
+    for fr in frames:
+        dw_res = det.process(fr)
+        tensor = det.extract_lsec_tensor(fr, precomputed_res=dw_res)
+        kp_sequence.append(tensor)
+    t_ext_end = time.time()
+
+    seq_arr = np.array(kp_sequence, dtype=np.float32)
+    resampled = resample_sequence(seq_arr, eng.window_size)
+    inp = torch.from_numpy(resampled).unsqueeze(0).to(eng.device)
+
+    with torch.no_grad():
+        logits, _ = eng.model(inp)
+        probs = torch.softmax(logits, dim=-1)
+        conf, pred_idx = probs.max(dim=-1)
+
+    best_label = eng.label_encoder.inverse_transform(int(pred_idx.item()))
+    best_conf = float(conf.item())
+    total_ms = round((time.time() - t0) * 1000, 1)
+
+    return {
+        "success": True,
+        "prediction": best_label,
+        "confidence": round(best_conf, 4),
+        "total_frames": len(frames),
+        "duration_seconds": round(len(frames) / 30.0, 2),
+        "inference_time_ms": total_ms,
+        "extraction_time_ms": round((t_ext_end - t_ext_start) * 1000, 1),
     }
 
 
