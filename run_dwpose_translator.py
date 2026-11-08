@@ -51,7 +51,10 @@ def main():
     if tutor.lessons:
         tutor.set_section("TODAS")
 
-    cap = cv2.VideoCapture(0)
+    # En Windows, DirectShow (CAP_DSHOW) previene bloqueos de cámara por navegadores
+    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+    if not cap.isOpened():
+        cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         print("ERROR: No se pudo abrir la cámara web.")
         return
