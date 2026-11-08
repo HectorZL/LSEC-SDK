@@ -100,8 +100,8 @@ def main():
                 display_frame = frame.copy()
                 hands_detected = False
 
-            # Extract normalized (137, 3) tensor
-            kp_array = detector.extract_lsec_tensor(frame)
+            # Extract normalized (137, 3) tensor (reusing precomputed DWPose result to avoid double GPU inference)
+            kp_array = detector.extract_lsec_tensor(frame, precomputed_res=dw_res)
 
             # 2. Push to temporal inference engine
             pred_label, pred_conf = engine.push_frame(kp_array)

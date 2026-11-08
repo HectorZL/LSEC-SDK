@@ -267,13 +267,18 @@ class DWPoseDetector:
 
         return kpts, scores
 
-    def extract_lsec_tensor(self, frame: np.ndarray) -> np.ndarray:
+    def extract_lsec_tensor(
+        self,
+        frame: np.ndarray,
+        precomputed_res: Optional[Tuple[np.ndarray, np.ndarray]] = None,
+    ) -> np.ndarray:
         """
         Extracts keypoints and normalizes them into LSEC SDK standard (137, 3) tensor format [x, y, confidence].
         Properly maps COCO-WholeBody (133) joints to OpenPose 25 layout and handles 1-handed or 2-handed gestures.
+        Accepts precomputed DWPose results to eliminate redundant GPU inference passes.
         """
         h, w = frame.shape[:2]
-        res = self.process(frame)
+        res = precomputed_res if precomputed_res is not None else self.process(frame)
         tensor = np.zeros((TOTAL_KEYPOINTS_COUNT, 3), dtype=np.float32)
 
         if res is None:
@@ -387,14 +392,17 @@ class DWPoseDetector:
                     pt2 = (int(kpts[p2, 0]), int(kpts[p2, 1]))
                     cv2.line(frame, pt1, pt2, (0, 255, 0), 2, cv2.LINE_AA)
 
-        # Draw anatomical neck line from shoulder midpoint to chin base (stops at chin, never crosses mouth/nose)
+        # Draw anatomical neck line from shoulder midpoint to throat base (never touches face or chin)
         if len(scores) > 6 and scores[5] > thresh and scores[6] > thresh:
             neck_pt = (int((kpts[5, 0] + kpts[6, 0]) / 2.0), int((kpts[5, 1] + kpts[6, 1]) / 2.0))
             if len(scores) > 31 and scores[31] > thresh:
-                chin_pt = (int(kpts[31, 0]), int(kpts[31, 1]))
-                cv2.line(frame, neck_pt, chin_pt, (0, 255, 0), 2, cv2.LINE_AA)
+                # Stop 25% below chin to ensure clean anatomical gap between neck and jawline
+                chin_y = kpts[31, 1]
+                throat_y = int(neck_pt[1] - 0.75 * (neck_pt[1] - chin_y))
+                throat_x = int(neck_pt[0] + 0.75 * (kpts[31, 0] - neck_pt[0]))
+                cv2.line(frame, neck_pt, (throat_x, throat_y), (0, 255, 0), 2, cv2.LINE_AA)
             elif scores[0] > thresh:
-                throat_y = int(neck_pt[1] - 0.45 * (neck_pt[1] - kpts[0, 1]))
+                throat_y = int(neck_pt[1] - 0.35 * (neck_pt[1] - kpts[0, 1]))
                 cv2.line(frame, neck_pt, (neck_pt[0], throat_y), (0, 255, 0), 2, cv2.LINE_AA)
 
         # Draw body joints (shoulders, elbows, wrists, hips, knees, ankles)
