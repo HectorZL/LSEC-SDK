@@ -356,6 +356,7 @@
 
             let totalDiff = 0;
             let totalCount = 0;
+            let activePixels = 0;
 
             for (let y = startY; y < endY; y += 2) {
                 const r = Math.min(gridR - 1, Math.floor((y - startY) / blockH));
@@ -368,6 +369,10 @@
                                   Math.abs(cur[idx+1] - prev[idx+1]) +
                                   Math.abs(cur[idx+2] - prev[idx+2])) / 3.0;
 
+                    // Filtro de ruido de sensor: el grano térmico de la cámara web en oscuridad es < 18
+                    if (diff < 18) continue;
+
+                    activePixels++;
                     totalDiff += diff;
                     totalCount++;
                     blockDiffs[bIdx] += diff;
@@ -376,6 +381,11 @@
             }
 
             lastDiffImageData = currentData;
+
+            // Si hay menos de 50 píxeles activos, es grano de cámara aleatorio -> Energía CERO
+            if (activePixels < 50) {
+                return 0;
+            }
 
             // Obtener el bloque con mayor actividad (donde se mueve la mano activa)
             let maxBlockDiff = 0;
@@ -388,8 +398,8 @@
 
             const globalAvg = totalCount > 0 ? (totalDiff / totalCount) : 0;
             
-            // Puntuación combinada: 70% peso al bloque más activo (1 mano) + 30% al promedio global
-            const motionScore = (maxBlockDiff * 0.75) + (globalAvg * 0.35);
+            // Puntuación combinada robusta contra ruido en oscuridad
+            const motionScore = (maxBlockDiff * 0.70) + (globalAvg * 0.30);
             return motionScore;
         }
 
@@ -450,6 +460,18 @@
 
         // Display Result & Speak
         function displayResult(data) {
+            if (data.prediction === "REPOSO") {
+                resultBadge.textContent = "EN REPOSO (Sin manos activas)";
+                resultBadge.className = "inline-block px-3 py-1 bg-gray-800 text-gray-400 text-xs font-mono rounded-full mb-3";
+                resultText.textContent = "---";
+                resultConf.textContent = "0.0%";
+                confProgress.style.width = "0%";
+                metricDuration.textContent = `${data.duration_seconds || 0} s`;
+                metricFrames.textContent = data.total_frames || 0;
+                metricLatency.textContent = `${data.inference_time_ms || 0} ms`;
+                return;
+            }
+
             lastPrediction = data.prediction;
             resultText.textContent = data.prediction;
             const pct = (data.confidence * 100).toFixed(1);
@@ -573,6 +595,14 @@
         clearHistBtn.onclick = () => {
             historyList.innerHTML = '<p class="text-gray-600 text-center py-6 italic text-[11px]">Historial limpiado.</p>';
         };
+
+        // Atajo de teclado: Espacio para iniciar captura manual de 2.2s
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && e.target === document.body) {
+                e.preventDefault();
+                manualBtn.click();
+            }
+        });
 
         // Bootstrap on load
         window.addEventListener('DOMContentLoaded', async () => {

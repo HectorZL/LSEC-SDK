@@ -126,18 +126,56 @@ async def translate_frames(files: List[UploadFile] = File(...)):
     if len(frames) < 12:
         raise HTTPException(status_code=400, detail="No se pudieron decodificar suficientes fotogramas.")
 
+    # Submuestreo inteligente para latencia en tiempo real (<0.9s):
+    # Si llegan más de 32 frames, submuestreamos uniformemente a ~30 frames
+    if len(frames) > 32:
+        step = max(1, len(frames) // 32)
+        frames_to_process = frames[::step][:32]
+    else:
+        frames_to_process = frames
+
     det = get_detector_instance()
     eng = get_inference_engine()
 
     t_ext_start = time.time()
     kp_sequence = []
-    for fr in frames:
+    for fr in frames_to_process:
         dw_res = det.process(fr)
         tensor = det.extract_lsec_tensor(fr, precomputed_res=dw_res)
         kp_sequence.append(tensor)
     t_ext_end = time.time()
 
     seq_arr = np.array(kp_sequence, dtype=np.float32)
+
+    # Filtro Cinemático del Espacio de Señas (Elimina falsos disparos en reposo o sin manos)
+    rw_y = seq_arr[:, 4, 1]
+    lw_y = seq_arr[:, 7, 1]
+    rw_c = seq_arr[:, 4, 2]
+    lw_c = seq_arr[:, 7, 2]
+
+    # Al menos una mano (derecha o izquierda) debe estar elevada y visible
+    r_elevated = bool(np.min(rw_y) < 0.82 and np.mean(rw_c) > 0.15)
+    l_elevated = bool(np.min(lw_y) < 0.82 and np.mean(lw_c) > 0.15)
+
+    rh_diff = np.diff(seq_arr[:, 116:137, :2], axis=0) if len(seq_arr) > 1 else np.zeros((1, 21, 2))
+    lh_diff = np.diff(seq_arr[:, 95:116, :2], axis=0) if len(seq_arr) > 1 else np.zeros((1, 21, 2))
+    rh_motion = float(np.mean(np.abs(rh_diff))) if len(rh_diff) > 0 else 0.0
+    lh_motion = float(np.mean(np.abs(lh_diff))) if len(lh_diff) > 0 else 0.0
+    active_motion = max(rh_motion, lh_motion)
+
+    total_ms = round((time.time() - t0) * 1000, 1)
+
+    if not (r_elevated or l_elevated) or active_motion < 0.0030:
+        return {
+            "success": True,
+            "prediction": "REPOSO",
+            "confidence": 1.0,
+            "message": "Manos en reposo / No se detectó gesto en espacio de señas",
+            "total_frames": len(frames),
+            "inference_time_ms": total_ms,
+            "extraction_time_ms": round((t_ext_end - t_ext_start) * 1000, 1),
+        }
+
     resampled = resample_sequence(seq_arr, eng.window_size)
     inp = torch.from_numpy(resampled).unsqueeze(0).to(eng.device)
 
