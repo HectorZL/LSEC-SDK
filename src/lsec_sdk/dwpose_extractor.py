@@ -92,13 +92,15 @@ class DWPoseDetector:
         self.enable_facemesh = enable_facemesh and HAS_MEDIAPIPE
         self.face_mesh = None
         self.last_face_mesh_landmarks = None
+        self.face_mesh_cache = None
+        self.face_mesh_cache_ttl = 0
         if self.enable_facemesh:
             try:
                 self.face_mesh = mp.solutions.face_mesh.FaceMesh(
                     max_num_faces=1,
                     refine_landmarks=True,
-                    min_detection_confidence=0.35,
-                    min_tracking_confidence=0.35,
+                    min_detection_confidence=0.30,
+                    min_tracking_confidence=0.30,
                 )
             except Exception as e:
                 print(f"[DWPoseDetector] MediaPipe FaceMesh no disponible: {e}")
@@ -244,16 +246,24 @@ class DWPoseDetector:
 
         kpts, scores = self._decode_simcc(simcc_x, simcc_y, center, scale)
 
-        # Update FaceMesh landmarks on RGB frame
-        self.last_face_mesh_landmarks = None
+        # Update FaceMesh landmarks on RGB frame with persistence cache across hand occlusions
         if self.enable_facemesh and self.face_mesh is not None:
             try:
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 fm_out = self.face_mesh.process(rgb)
                 if fm_out and fm_out.multi_face_landmarks:
-                    self.last_face_mesh_landmarks = fm_out.multi_face_landmarks[0]
+                    self.face_mesh_cache = fm_out.multi_face_landmarks[0]
+                    self.face_mesh_cache_ttl = 8  # Retain for up to 8 frames (~0.3s) during fast hand passes
+                    self.last_face_mesh_landmarks = self.face_mesh_cache
+                elif self.face_mesh_cache_ttl > 0:
+                    self.face_mesh_cache_ttl -= 1
+                    self.last_face_mesh_landmarks = self.face_mesh_cache
+                else:
+                    self.last_face_mesh_landmarks = None
             except Exception:
                 self.last_face_mesh_landmarks = None
+        else:
+            self.last_face_mesh_landmarks = None
 
         return kpts, scores
 
@@ -377,10 +387,15 @@ class DWPoseDetector:
                     pt2 = (int(kpts[p2, 0]), int(kpts[p2, 1]))
                     cv2.line(frame, pt1, pt2, (0, 255, 0), 2, cv2.LINE_AA)
 
-        # Draw anatomical neck line from shoulder midpoint to nose
-        if len(scores) > 6 and scores[5] > thresh and scores[6] > thresh and scores[0] > thresh:
+        # Draw anatomical neck line from shoulder midpoint to chin base (stops at chin, never crosses mouth/nose)
+        if len(scores) > 6 and scores[5] > thresh and scores[6] > thresh:
             neck_pt = (int((kpts[5, 0] + kpts[6, 0]) / 2.0), int((kpts[5, 1] + kpts[6, 1]) / 2.0))
-            cv2.line(frame, neck_pt, (int(kpts[0, 0]), int(kpts[0, 1])), (0, 255, 0), 2, cv2.LINE_AA)
+            if len(scores) > 31 and scores[31] > thresh:
+                chin_pt = (int(kpts[31, 0]), int(kpts[31, 1]))
+                cv2.line(frame, neck_pt, chin_pt, (0, 255, 0), 2, cv2.LINE_AA)
+            elif scores[0] > thresh:
+                throat_y = int(neck_pt[1] - 0.45 * (neck_pt[1] - kpts[0, 1]))
+                cv2.line(frame, neck_pt, (neck_pt[0], throat_y), (0, 255, 0), 2, cv2.LINE_AA)
 
         # Draw body joints (shoulders, elbows, wrists, hips, knees, ankles)
         for i in range(5, min(17, len(kpts))):
@@ -393,20 +408,24 @@ class DWPoseDetector:
             try:
                 mp_drawing = mp.solutions.drawing_utils
                 mp_face_mesh = mp.solutions.face_mesh
-                mp_styles = mp.solutions.drawing_styles
+                
+                # Cohesive aesthetic: elegant cyan contours and soft mint irises (no red/green clown eyes)
+                contour_spec = mp_drawing.DrawingSpec(color=(0, 230, 255), thickness=1, circle_radius=1)
+                iris_spec = mp_drawing.DrawingSpec(color=(0, 255, 180), thickness=1, circle_radius=1)
+
                 mp_drawing.draw_landmarks(
                     image=frame,
                     landmark_list=fm,
                     connections=mp_face_mesh.FACEMESH_CONTOURS,
                     landmark_drawing_spec=None,
-                    connection_drawing_spec=mp_styles.get_default_face_mesh_contours_style(),
+                    connection_drawing_spec=contour_spec,
                 )
                 mp_drawing.draw_landmarks(
                     image=frame,
                     landmark_list=fm,
                     connections=mp_face_mesh.FACEMESH_IRISES,
                     landmark_drawing_spec=None,
-                    connection_drawing_spec=mp_styles.get_default_face_mesh_iris_connections_style(),
+                    connection_drawing_spec=iris_spec,
                 )
             except Exception:
                 fm = None

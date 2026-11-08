@@ -165,3 +165,4 @@ class TestSignModalities:
         assert "Familia" in labels
         assert "Feliz" in labels
         assert "Amigo intimo" in labels or "Amigo íntimo" in labels or any("Amigo" in l for l in labels)
+
