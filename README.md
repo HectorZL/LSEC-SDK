@@ -10,12 +10,10 @@ SDK en Python y PyTorch acelerado por GPU (NVIDIA CUDA) para la extracción de c
    * Extracción holística en tiempo real de **133 keypoints** (cuerpo COCO, rostro denso de 68 puntos y ambas manos de 21 puntos).
    * Robusto frente a cruce de manos, oclusiones y movimientos rápidos (30-45 FPS en GPU NVIDIA RTX 3060).
 
-2. **Catálogo Canónico Oficial CONADIS Ecuador (17 Señas):**
-   * **Saludos y Cortesía (7):** *Buenos días, Buenas tardes, Buenas noches, Adiós, De nada, Un momento por favor, Hace tiempo que no te veo.*
-   * **Trabajo y Trámites (2):** *DÓNDE ESTUDIÓ, ¿En qué le puedo ayudar?*
-   * **Comida y Rutina (3):** *Hambre, Agua, Ya no más.*
-   * **Salud y Estado (4):** *CÓMO TE SIENTES, ¿Cómo está?, ¿Está bien?, Mal.*
-   * **General (1):** *¿Dónde?*
+2. **Catálogo Canónico Oficial CONADIS Ecuador (24 Señas + Reposo):**
+   * **Señas de 1 Mano (Unimanuales):** *Adiós, De nada, Un momento por favor, Hambre, Agua, Mal, ¿Está bien?, Aprender, Hace tiempo que no te veo.*
+   * **Señas de 2 Manos (Bimanuales Estándar):** *Buenos días, Buenas tardes, Buenas noches, ¿Cómo está?, CÓMO TE SIENTES, ¿Dónde?, DÓNDE ESTUDIÓ, ¿En qué le puedo ayudar?, Ya no más.*
+   * **Señas Complejas (Oclusión profunda, cruces y contactos articulatorios):** *Abrazar (cruce bimanual profundo sobre el pecho), Familia (círculo 3D configuraciones F), Feliz (pecho + RNM facial), Importante (precisión digital I), Amigo íntimo (interbloqueo digital de índices), Universidad (base horizontal + rotación U).*
 
 3. **Modo Tutor y Aprendizaje Guiado con Modelo de Palitos (PiP):**
    * Animación en bucle del profesor virtual en tiempo real (PiP).

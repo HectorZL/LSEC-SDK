@@ -69,13 +69,13 @@ def matches_target(pred_label: Optional[str], target_label: str) -> bool:
 def classify_section(label: str) -> str:
     """Categorizes sign labels into intuitive pedagogical sections."""
     lbl = clean_ascii(label).upper()
-    if any(w in lbl for w in ["ADIOS", "BUENOS DIAS", "BUENAS TARDES", "BUENAS NOCHES", "DE NADA", "UN MOMENTO", "HACE TIEMPO", "ABRAZAR"]):
+    if any(w in lbl for w in ["ADIOS", "BUENOS DIAS", "BUENAS TARDES", "BUENAS NOCHES", "DE NADA", "UN MOMENTO", "HACE TIEMPO", "AMIGO INTIMO", "FAMILIA"]):
         return "SALUDOS"
-    if any(w in lbl for w in ["DONDE ESTUDIO", "CUENTA", "CREDITO", "REQUISITOS", "AYUDAR", "ABOGADO", "ABONAR", "FOLLETO", "A DIARIO"]):
+    if any(w in lbl for w in ["DONDE ESTUDIO", "CUENTA", "CREDITO", "REQUISITOS", "AYUDAR", "ABOGADO", "ABONAR", "FOLLETO", "A DIARIO", "UNIVERSIDAD", "APRENDER", "IMPORTANTE"]):
         return "TRABAJO"
     if any(w in lbl for w in ["HAMBRE", "AGUA", "BABACO", "ABRELATAS", "ABREFACIL", "ABSORBER", "YA NO MAS"]):
         return "COMIDA"
-    if any(w in lbl for w in ["COMO TE SIENTES", "COMO ESTA", "ESTA BIEN", "MAL", "ABDOMEN", "ABORTAR", "ABSTINENCIA", "ABSTENERSE", "AMEDRENTARSE", "MOCO"]):
+    if any(w in lbl for w in ["COMO TE SIENTES", "COMO ESTA", "ESTA BIEN", "MAL", "ABDOMEN", "ABORTAR", "ABSTINENCIA", "ABSTENERSE", "AMEDRENTARSE", "MOCO", "FELIZ", "ABRAZAR"]):
         return "SALUD"
     return "GENERAL"
 

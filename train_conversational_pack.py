@@ -22,8 +22,9 @@ from lsec_sdk.models.dataset import SignSequenceDataset
 from lsec_sdk.models.trainer import SignModelTrainer
 from lsec_sdk.models.inference import LiveInferenceEngine
 
-# 17 Señas Oficiales Ecuatorianas CONADIS (Sin Hola ni Chao de España)
+# 24 Señas Oficiales Ecuatorianas CONADIS (1 Mano, 2 Manos y Complejas con Oclusión)
 CONVERSATIONAL_SIGNS = [
+    # 1. Señas de Saludo y Cortesía
     {"slug": "buenos-dias", "label": "Buenos días", "cat": "frases-comunes"},
     {"slug": "buenas-tardes", "label": "Buenas tardes", "cat": "frases-comunes"},
     {"slug": "buenas-noches", "label": "Buenas noches", "cat": "frases-comunes"},
@@ -34,6 +35,8 @@ CONVERSATIONAL_SIGNS = [
     {"slug": "un-momento-por-favor", "label": "Un momento por favor", "cat": "alfa-u"},
     {"slug": "adios", "label": "Adiós", "cat": "configuracion_manual_1"},
     {"slug": "hace-tiempo-que-no-te-veo", "label": "Hace tiempo que no te veo", "cat": "alfa-h"},
+    
+    # 2. Señas de Estado y Necesidad
     {"slug": "hambre", "label": "Hambre", "cat": "alfa-h"},
     {"slug": "agua", "label": "Agua", "cat": "configuracion_manual_3"},
     {"slug": "ya-no-mas", "label": "Ya no más", "cat": "alfa-y"},
@@ -41,6 +44,15 @@ CONVERSATIONAL_SIGNS = [
     {"slug": "donde-estudio", "label": "DÓNDE ESTUDIÓ", "cat": "alfa-d", "alt_video": "044 DÓNDE ESTUDIÓ.mp4"},
     {"slug": "donde", "label": "¿Dónde?", "cat": "alfa-d"},
     {"slug": "en-que-le-puedo-ayudar", "label": "¿En qué le puedo ayudar?", "cat": "alfa-e"},
+
+    # 3. Señas Complejas y Bimanuales Añadidas (Pruebas de Estrés y Oclusión)
+    {"slug": "abrazar", "label": "Abrazar", "cat": "alfa-a"},
+    {"slug": "familia", "label": "Familia", "cat": "alfa-f"},
+    {"slug": "feliz", "label": "Feliz", "cat": "alfa-f"},
+    {"slug": "importante", "label": "Importante", "cat": "alfa-i"},
+    {"slug": "amigo-intimo", "label": "Amigo íntimo", "cat": "configuracion_manual_7"},
+    {"slug": "universidad", "label": "Universidad", "cat": "alfa-u"},
+    {"slug": "aprender", "label": "Aprender", "cat": "configuracion_manual"},
 ]
 
 def extract_all_with_dwpose():
